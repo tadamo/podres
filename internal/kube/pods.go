@@ -14,6 +14,7 @@ type ContainerSpec struct {
 	Name       string
 	Status     string // "Running", "Waiting", "Terminated", "Unknown"
 	Ready      bool
+	Restarts   int32
 	CPURequest resource.Quantity
 	CPULimit   resource.Quantity
 	MemRequest resource.Quantity
@@ -48,8 +49,9 @@ func (c *Client) ListPods(namespace string) ([]PodSpec, error) {
 func podToSpec(pod corev1.Pod) PodSpec {
 	var restarts int32
 	type containerInfo struct {
-		state string
-		ready bool
+		state    string
+		ready    bool
+		restarts int32
 	}
 	infoMap := make(map[string]containerInfo, len(pod.Status.ContainerStatuses))
 	for _, cs := range pod.Status.ContainerStatuses {
@@ -65,7 +67,7 @@ func podToSpec(pod corev1.Pod) PodSpec {
 		default:
 			state = "Unknown"
 		}
-		infoMap[cs.Name] = containerInfo{state: state, ready: cs.Ready}
+		infoMap[cs.Name] = containerInfo{state: state, ready: cs.Ready, restarts: cs.RestartCount}
 	}
 
 	containers := make([]ContainerSpec, 0, len(pod.Spec.Containers))
@@ -75,9 +77,10 @@ func podToSpec(pod corev1.Pod) PodSpec {
 			info.state = "Unknown"
 		}
 		containers = append(containers, ContainerSpec{
-			Name:   c.Name,
-			Status: info.state,
-			Ready:  info.ready,
+			Name:     c.Name,
+			Status:   info.state,
+			Ready:    info.ready,
+			Restarts: info.restarts,
 			CPURequest: quantityOrZero(c.Resources.Requests, corev1.ResourceCPU),
 			CPULimit:   quantityOrZero(c.Resources.Limits, corev1.ResourceCPU),
 			MemRequest: quantityOrZero(c.Resources.Requests, corev1.ResourceMemory),

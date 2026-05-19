@@ -16,20 +16,22 @@ const (
 	colPod       = 38
 	colContainer = 16
 	colPhase     = 14 // "● Running" / "◌ Pending" / "✔ Succeeded" / "✕ Failed"
+	colDivider   = 1  // thin visual separator
 	colStatus    = 13 // "● Running" / "◌ Waiting" / "✕ Terminated"
 	colReady     = 6  // "✔" / "✘"
+	colRestarts  = 9  // restart count
 	colVal       = 9  // CPU-REQ, CPU-LIM, CPU-USE, MEM-REQ, MEM-LIM, MEM-USE
 	colPct       = 7  // CPU%, MEM%
 )
 
 var columnHeaders = []string{
-	"POD", "PHASE", "CONTAINER", "STATE", "READY",
+	"POD", "PHASE", "│", "CONTAINER", "STATE", "READY", "RESTARTS",
 	"CPU-REQ", "CPU-LIM", "CPU-USE", "CPU%",
 	"MEM-REQ", "MEM-LIM", "MEM-USE", "MEM%",
 }
 
 var columnWidths = []int{
-	colPod, colPhase, colContainer, colStatus, colReady,
+	colPod, colPhase, colDivider, colContainer, colStatus, colReady, colRestarts,
 	colVal, colVal, colVal, colPct,
 	colVal, colVal, colVal, colPct,
 }
@@ -92,7 +94,11 @@ func renderStatusLine(namespace, cluster, user string, st Styles) string {
 func renderHeaderRow(st Styles) string {
 	cells := make([]string, len(columnHeaders))
 	for i, h := range columnHeaders {
-		cells[i] = st.Header.Width(columnWidths[i]).Render(h)
+		style := st.Header
+		if h == "│" {
+			style = st.Divider
+		}
+		cells[i] = style.Width(columnWidths[i]).Render(h)
 	}
 	return strings.Join(cells, " ")
 }
@@ -176,12 +182,15 @@ func renderPodRows(
 
 		statusSym, statusStyle := containerStatusCell(c.Status, st)
 		readySym, readyStyle := containerReadyCell(c.Ready, st)
+		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, st)
 		cells := []string{
 			pStyle.Width(colPod).Render(podLabel),
 			phaseStyle.Width(colPhase).Render(phaseLabel),
+			st.Divider.Width(colDivider).Render("│"),
 			cStyle.Width(colContainer).Render(truncate(c.Name, colContainer)),
 			statusStyle.Width(colStatus).Render(statusSym),
 			readyStyle.Width(colReady).Render(readySym),
+			restartsStyle.Width(colRestarts).Render(restartsStr),
 			st.PlainCell.Width(colVal).Render(quantityStr(c.CPURequest)),
 			st.PlainCell.Width(colVal).Render(quantityStr(c.CPULimit)),
 			st.PlainCell.Width(colVal).Render(cpuUseStr),
@@ -297,6 +306,14 @@ func containerReadyCell(ready bool, st Styles) (string, lipgloss.Style) {
 		return "✔", st.OK
 	}
 	return "✘", st.Crit
+}
+
+func containerRestartsCell(restarts int32, st Styles) (string, lipgloss.Style) {
+	s := fmt.Sprintf("%d", restarts)
+	if restarts > 0 {
+		return s, st.Warn
+	}
+	return s, st.PlainCell
 }
 
 func containerStatusCell(status string, st Styles) (string, lipgloss.Style) {
