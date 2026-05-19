@@ -30,11 +30,9 @@ type PodSpec struct {
 	Containers []ContainerSpec
 }
 
-// ListPods returns resource specs for all running pods in the given namespace.
+// ListPods returns resource specs for all pods in the given namespace.
 func (c *Client) ListPods(namespace string) ([]PodSpec, error) {
-	podList, err := c.kube.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
-		FieldSelector: "status.phase=Running",
-	})
+	podList, err := c.kube.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list pods in %q: %w", namespace, err)
 	}
