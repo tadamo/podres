@@ -56,6 +56,8 @@ func Render(
 	sb.WriteString(renderHeaderRow(st))
 	sb.WriteString("\n")
 
+	totals := computeTotals(pods, metrics)
+
 	var warns []warningEntry
 	for _, pod := range pods {
 		sb.WriteString(renderPodDivider(st))
@@ -69,6 +71,10 @@ func Render(
 		sb.WriteString(rows)
 		warns = append(warns, w...)
 	}
+
+	sb.WriteString(renderThickDivider(st))
+	sb.WriteString(renderTotalsRow(totals, thresh, st))
+	sb.WriteString("\n")
 
 	if len(warns) > 0 {
 		sb.WriteString("\n")
@@ -100,6 +106,92 @@ func renderHeaderRow(st Styles) string {
 			style = st.Divider
 		}
 		cells[i] = style.Width(columnWidths[i]).Render(h)
+	}
+	return strings.Join(cells, " ")
+}
+
+type tableTotals struct {
+	cpuReqMilli int64
+	cpuLimMilli int64
+	cpuUseMilli int64
+	cpuUseAvail bool
+	memReqBytes int64
+	memLimBytes int64
+	memUseBytes int64
+	memUseAvail bool
+}
+
+func computeTotals(pods []kube.PodSpec, metrics map[string]kube.PodMetrics) tableTotals {
+	var t tableTotals
+	t.cpuUseAvail = metrics != nil
+	t.memUseAvail = metrics != nil
+	for _, pod := range pods {
+		var pm *kube.PodMetrics
+		if metrics != nil {
+			if m, ok := metrics[pod.Name]; ok {
+				pm = &m
+			}
+		}
+		for _, c := range pod.Containers {
+			t.cpuReqMilli += c.CPURequest.MilliValue()
+			t.cpuLimMilli += c.CPULimit.MilliValue()
+			t.memReqBytes += c.MemRequest.Value()
+			t.memLimBytes += c.MemLimit.Value()
+			if pm != nil {
+				for j := range pm.Containers {
+					if pm.Containers[j].Name == c.Name {
+						t.cpuUseMilli += pm.Containers[j].CPUUsage.MilliValue()
+						t.memUseBytes += pm.Containers[j].MemUsage.Value()
+						break
+					}
+				}
+			}
+		}
+	}
+	return t
+}
+
+func renderThickDivider(st Styles) string {
+	total := len(columnWidths) - 1
+	for _, w := range columnWidths {
+		total += w
+	}
+	return st.Header.Render(strings.Repeat("═", total)) + "\n"
+}
+
+func renderTotalsRow(t tableTotals, thresh threshold.Config, st Styles) string {
+	fmtOrDash := func(v int64, fn func(int64) string) string {
+		if v == 0 {
+			return "—"
+		}
+		return fn(v)
+	}
+
+	cpuUseStr := "N/A"
+	if t.cpuUseAvail {
+		cpuUseStr = fmtOrDash(t.cpuUseMilli, fmtMilliCPU)
+	}
+	memUseStr := "N/A"
+	if t.memUseAvail {
+		memUseStr = fmtOrDash(t.memUseBytes, fmtBytes)
+	}
+
+	cells := []string{
+		st.Header.Width(colPod).Render("TOTAL"),
+		st.PlainCell.Width(colPhase).Render(""),
+		st.Divider.Width(colDivider).Render("│"),
+		st.PlainCell.Width(colContainer).Render(""),
+		st.PlainCell.Width(colStatus).Render(""),
+		st.PlainCell.Width(colReady).Render(""),
+		st.PlainCell.Width(colRestarts).Render(""),
+		st.Header.Width(colVal).Render(fmtOrDash(t.cpuReqMilli, fmtMilliCPU)),
+		st.Header.Width(colVal).Render(fmtOrDash(t.cpuLimMilli, fmtMilliCPU)),
+		st.Header.Width(colVal).Render(cpuUseStr),
+		st.PlainCell.Width(colPct).Render("—"),
+		st.Header.Width(colVal).Render(fmtOrDash(t.memReqBytes, fmtBytes)),
+		st.Header.Width(colVal).Render(fmtOrDash(t.memLimBytes, fmtBytes)),
+		st.Header.Width(colVal).Render(memUseStr),
+		st.PlainCell.Width(colPct).Render("—"),
 	}
 	return strings.Join(cells, " ")
 }
