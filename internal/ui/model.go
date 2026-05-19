@@ -13,6 +13,8 @@ import (
 type Model struct {
 	client    *kube.Client
 	namespace string
+	cluster   string
+	user      string
 	thresh    threshold.Config
 	styles    Styles
 	interval  time.Duration
@@ -37,7 +39,7 @@ type tickMsg struct{}
 // New returns an initialized Model ready to run.
 func New(
 	client *kube.Client,
-	namespace string,
+	namespace, cluster, user string,
 	thresh threshold.Config,
 	styles Styles,
 	interval time.Duration,
@@ -46,6 +48,8 @@ func New(
 	return Model{
 		client:    client,
 		namespace: namespace,
+		cluster:   cluster,
+		user:      user,
 		thresh:    thresh,
 		styles:    styles,
 		interval:  interval,
@@ -95,7 +99,7 @@ func (m Model) View() string {
 	if m.pods == nil {
 		return "Loading…\n"
 	}
-	return Render(m.namespace, m.pods, m.metrics, m.thresh, m.styles)
+	return Render(m.namespace, m.cluster, m.user, m.pods, m.metrics, m.thresh, m.styles)
 }
 
 // fetchCmd returns a tea.Cmd that fetches pods and metrics in the background.

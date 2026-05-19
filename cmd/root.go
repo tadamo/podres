@@ -98,12 +98,17 @@ func runPodres(opts Options) error {
 		}
 	}
 
+	cluster, user, err := client.ClusterInfo()
+	if err != nil {
+		return fmt.Errorf("resolve cluster info: %w", err)
+	}
+
 	thresh := threshold.Config{
 		Warn: opts.ThresholdWarn,
 		Crit: opts.ThresholdCrit,
 	}
 	styles := ui.DefaultStyles(opts.NoColor)
-	model := ui.New(client, namespace, thresh, styles, opts.Interval, opts.NoWatch)
+	model := ui.New(client, namespace, cluster, user, thresh, styles, opts.Interval, opts.NoWatch)
 
 	var progOpts []tea.ProgramOption
 	if !opts.NoWatch {

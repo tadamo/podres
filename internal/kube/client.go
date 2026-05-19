@@ -2,6 +2,7 @@ package kube
 
 import (
 	"fmt"
+	"strings"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -36,6 +37,27 @@ func New(kubeconfig, context string) (*Client, error) {
 	}
 
 	return &Client{kube: kubeClient, metrics: metricsClient, clientCfg: clientCfg}, nil
+}
+
+// ClusterInfo returns the cluster name and auth user from the active kubeconfig context.
+// It handles both standard kubeconfigs and OpenShift-style ones where auth info is
+// stored as "user/server" — in that case only the first segment is returned as the user.
+func (c *Client) ClusterInfo() (cluster, user string, err error) {
+	raw, err := c.clientCfg.RawConfig()
+	if err != nil {
+		return "", "", fmt.Errorf("raw config: %w", err)
+	}
+	if ctx, ok := raw.Contexts[raw.CurrentContext]; ok {
+		cluster = ctx.Cluster
+		user = firstSegment(ctx.AuthInfo)
+	}
+	return cluster, user, nil
+}
+
+// firstSegment returns the portion of s before the first '/', or s itself if there is none.
+func firstSegment(s string) string {
+	before, _, _ := strings.Cut(s, "/")
+	return before
 }
 
 // CurrentNamespace returns the namespace from the active kubeconfig context.

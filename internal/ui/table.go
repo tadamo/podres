@@ -41,7 +41,7 @@ type warningEntry struct {
 // Render builds the full terminal output from pod specs, live metrics, and display config.
 // metrics may be nil when metrics-server is unavailable; usage columns will show "N/A".
 func Render(
-	namespace string,
+	namespace, cluster, user string,
 	pods []kube.PodSpec,
 	metrics map[string]kube.PodMetrics,
 	thresh threshold.Config,
@@ -49,7 +49,7 @@ func Render(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(renderStatusLine(namespace, st))
+	sb.WriteString(renderStatusLine(namespace, cluster, user, st))
 	sb.WriteString("\n\n")
 	sb.WriteString(renderHeaderRow(st))
 	sb.WriteString("\n")
@@ -80,12 +80,12 @@ func Render(
 	return sb.String()
 }
 
-func renderStatusLine(namespace string, st Styles) string {
+func renderStatusLine(namespace, cluster, user string, st Styles) string {
 	now := time.Now()
 	tz, _ := now.Zone()
 	return st.StatusLine.Render(fmt.Sprintf(
-		"NAMESPACE: %-30s Refreshed: %s   TZ: %s",
-		namespace, now.Format("15:04:05"), tz,
+		"⎈  NAMESPACE: %s     ⬡  CLUSTER: %s     ◉  USER: %s          Refreshed: %s   TZ: %s",
+		namespace, cluster, user, now.Format("01/02/2006 3:04:05 PM"), tz,
 	))
 }
 
