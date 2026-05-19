@@ -43,8 +43,10 @@ type warningEntry struct {
 // Render builds the full terminal output from pod specs, live metrics, and display config.
 // metrics may be nil when metrics-server is unavailable; usage columns will show "N/A".
 // quota may be nil when no ResourceQuota exists for the namespace.
+// selector, when non-empty, suppresses the ResourceQuota row because the totals only
+// cover filtered pods and the percentage would be misleading.
 func Render(
-	namespace, cluster, user string,
+	namespace, cluster, user, selector string,
 	pods []kube.PodSpec,
 	metrics map[string]kube.PodMetrics,
 	quota *kube.NamespaceQuota,
@@ -77,7 +79,10 @@ func Render(
 	sb.WriteString(renderThickDivider(st))
 	sb.WriteString(renderTotalsRow(totals, st))
 	sb.WriteString("\n")
-	if quota != nil {
+	if selector != "" {
+		sb.WriteString(st.Divider.Render("◌  ResourceQuota hidden (label selector active)"))
+		sb.WriteString("\n")
+	} else if quota != nil {
 		sb.WriteString(renderPodDivider(st))
 		sb.WriteString(renderQuotaRow(quota, totals, thresh, st))
 		sb.WriteString("\n")

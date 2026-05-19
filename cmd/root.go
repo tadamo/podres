@@ -15,6 +15,7 @@ import (
 // Options holds all CLI flag values.
 type Options struct {
 	Namespace      string
+	Selector       string
 	Interval       time.Duration
 	NoWatch        bool
 	Kubeconfig     string
@@ -48,6 +49,7 @@ func Execute() {
 func init() {
 	f := rootCmd.Flags()
 	f.StringP("namespace", "n", "", "namespace to watch (defaults to current context namespace)")
+	f.StringP("selector", "l", "", "label selector to filter pods (e.g. app=nginx)")
 	f.Duration("interval", 5*time.Second, "refresh interval in watch mode")
 	f.Bool("no-watch", false, "print once and exit")
 	f.String("kubeconfig", "", "path to kubeconfig (defaults to ~/.kube/config)")
@@ -60,6 +62,7 @@ func init() {
 func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 	f := cmd.Flags()
 	namespace, _ := f.GetString("namespace")
+	selector, _ := f.GetString("selector")
 	interval, _ := f.GetDuration("interval")
 	noWatch, _ := f.GetBool("no-watch")
 	kubeconfig, _ := f.GetString("kubeconfig")
@@ -74,6 +77,7 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 
 	return Options{
 		Namespace:     namespace,
+		Selector:      selector,
 		Interval:      interval,
 		NoWatch:       noWatch,
 		Kubeconfig:    kubeconfig,
@@ -108,7 +112,7 @@ func runPodres(opts Options) error {
 		Crit: opts.ThresholdCrit,
 	}
 	styles := ui.DefaultStyles(opts.NoColor)
-	model := ui.New(client, namespace, cluster, user, thresh, styles, opts.Interval, opts.NoWatch)
+	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch)
 
 	var progOpts []tea.ProgramOption
 	if !opts.NoWatch {
