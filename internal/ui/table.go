@@ -15,18 +15,21 @@ import (
 const (
 	colPod       = 38
 	colContainer = 16
-	colVal       = 9 // CPU-REQ, CPU-LIM, CPU-USE, MEM-REQ, MEM-LIM, MEM-USE
-	colPct       = 7 // CPU%, MEM%
+	colPhase     = 14 // "● Running" / "◌ Pending" / "✔ Succeeded" / "✕ Failed"
+	colStatus    = 13 // "● Running" / "◌ Waiting" / "✕ Terminated"
+	colReady     = 6  // "✔" / "✘"
+	colVal       = 9  // CPU-REQ, CPU-LIM, CPU-USE, MEM-REQ, MEM-LIM, MEM-USE
+	colPct       = 7  // CPU%, MEM%
 )
 
 var columnHeaders = []string{
-	"POD", "CONTAINER",
+	"POD", "PHASE", "CONTAINER", "STATE", "READY",
 	"CPU-REQ", "CPU-LIM", "CPU-USE", "CPU%",
 	"MEM-REQ", "MEM-LIM", "MEM-USE", "MEM%",
 }
 
 var columnWidths = []int{
-	colPod, colContainer,
+	colPod, colPhase, colContainer, colStatus, colReady,
 	colVal, colVal, colVal, colPct,
 	colVal, colVal, colVal, colPct,
 }
@@ -161,9 +164,24 @@ func renderPodRows(
 			pStyle = podStyle
 		}
 
+		phaseLabel := ""
+		var phaseSym string
+		var phaseStyle lipgloss.Style
+		if i == 0 {
+			phaseSym, phaseStyle = podPhaseCell(pod.Phase, st)
+			phaseLabel = phaseSym
+		} else {
+			phaseStyle = st.PlainCell
+		}
+
+		statusSym, statusStyle := containerStatusCell(c.Status, st)
+		readySym, readyStyle := containerReadyCell(c.Ready, st)
 		cells := []string{
 			pStyle.Width(colPod).Render(podLabel),
+			phaseStyle.Width(colPhase).Render(phaseLabel),
 			cStyle.Width(colContainer).Render(truncate(c.Name, colContainer)),
+			statusStyle.Width(colStatus).Render(statusSym),
+			readyStyle.Width(colReady).Render(readySym),
 			st.PlainCell.Width(colVal).Render(quantityStr(c.CPURequest)),
 			st.PlainCell.Width(colVal).Render(quantityStr(c.CPULimit)),
 			st.PlainCell.Width(colVal).Render(cpuUseStr),
@@ -257,6 +275,41 @@ func quantityStr(q resource.Quantity) string {
 
 func fmtMilliCPU(m int64) string {
 	return fmt.Sprintf("%dm", m)
+}
+
+func podPhaseCell(phase string, st Styles) (string, lipgloss.Style) {
+	switch phase {
+	case "Running":
+		return "● Running", st.OK
+	case "Pending":
+		return "◌ Pending", st.Warn
+	case "Succeeded":
+		return "✔ Succeeded", st.OK
+	case "Failed":
+		return "✕ Failed", st.Crit
+	default:
+		return "? Unknown", st.PlainCell
+	}
+}
+
+func containerReadyCell(ready bool, st Styles) (string, lipgloss.Style) {
+	if ready {
+		return "✔", st.OK
+	}
+	return "✘", st.Crit
+}
+
+func containerStatusCell(status string, st Styles) (string, lipgloss.Style) {
+	switch status {
+	case "Running":
+		return "● Running", st.OK
+	case "Waiting":
+		return "◌ Waiting", st.Warn
+	case "Terminated":
+		return "✕ Terminated", st.Crit
+	default:
+		return "? Unknown", st.PlainCell
+	}
 }
 
 func fmtBytes(b int64) string {
