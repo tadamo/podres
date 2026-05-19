@@ -58,6 +58,7 @@ func Render(
 
 	var warns []warningEntry
 	for _, pod := range pods {
+		sb.WriteString(renderPodDivider(st))
 		var pm *kube.PodMetrics
 		if metrics != nil {
 			if m, ok := metrics[pod.Name]; ok {
@@ -101,6 +102,14 @@ func renderHeaderRow(st Styles) string {
 		cells[i] = style.Width(columnWidths[i]).Render(h)
 	}
 	return strings.Join(cells, " ")
+}
+
+func renderPodDivider(st Styles) string {
+	total := len(columnWidths) - 1 // spaces between cells
+	for _, w := range columnWidths {
+		total += w
+	}
+	return st.Divider.Render(strings.Repeat("─", total)) + "\n"
 }
 
 func renderPodRows(

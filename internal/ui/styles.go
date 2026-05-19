@@ -40,7 +40,7 @@ func DefaultStyles(noColor bool) Styles {
 		Warn:       lipgloss.NewStyle().Foreground(lipgloss.Color("3")),           // yellow
 		Crit:       lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true), // bold red
 
-		Header:     lipgloss.NewStyle().Bold(true).Underline(true),
+		Header:     lipgloss.NewStyle().Bold(true),
 		PodName:    lipgloss.NewStyle().Bold(true),
 		PodRestart: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3")), // bold yellow
 		Container:  lipgloss.NewStyle(),
