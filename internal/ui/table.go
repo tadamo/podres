@@ -79,7 +79,7 @@ func Render(
 	sb.WriteString("\n")
 	if quota != nil {
 		sb.WriteString(renderPodDivider(st))
-		sb.WriteString(renderQuotaRow(quota, st))
+		sb.WriteString(renderQuotaRow(quota, totals, thresh, st))
 		sb.WriteString("\n")
 	} else {
 		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
@@ -206,13 +206,24 @@ func renderTotalsRow(t tableTotals, st Styles) string {
 	return strings.Join(cells, " ")
 }
 
-func renderQuotaRow(q *kube.NamespaceQuota, st Styles) string {
+func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Config, st Styles) string {
 	qStr := func(v resource.Quantity) string {
 		if v.IsZero() {
 			return "—"
 		}
 		return v.String()
 	}
+	pctCell := func(used, quota int64) (string, threshold.Level) {
+		if quota == 0 {
+			return "—", threshold.LevelOK
+		}
+		pct := float64(used) / float64(quota) * 100
+		return fmt.Sprintf("%.0f%%", pct), thresh.Classify(pct)
+	}
+
+	cpuPct, cpuLvl := pctCell(t.cpuReqMilli, q.CPURequest.MilliValue())
+	memPct, memLvl := pctCell(t.memReqBytes, q.MemRequest.Value())
+
 	cells := []string{
 		st.Header.Width(colPod).Render("ResourceQuota"),
 		st.PlainCell.Width(colPhase).Render(""),
@@ -224,11 +235,11 @@ func renderQuotaRow(q *kube.NamespaceQuota, st Styles) string {
 		st.Header.Width(colVal).Render(qStr(q.CPURequest)),
 		st.Header.Width(colVal).Render(qStr(q.CPULimit)),
 		st.PlainCell.Width(colVal).Render(""),
-		st.PlainCell.Width(colPct).Render(""),
+		levelStyle(st, cpuLvl).Width(colPct).Render(cpuPct),
 		st.Header.Width(colVal).Render(qStr(q.MemRequest)),
 		st.Header.Width(colVal).Render(qStr(q.MemLimit)),
 		st.PlainCell.Width(colVal).Render(""),
-		st.PlainCell.Width(colPct).Render(""),
+		levelStyle(st, memLvl).Width(colPct).Render(memPct),
 	}
 	return strings.Join(cells, " ")
 }
