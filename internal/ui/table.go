@@ -42,10 +42,12 @@ type warningEntry struct {
 
 // Render builds the full terminal output from pod specs, live metrics, and display config.
 // metrics may be nil when metrics-server is unavailable; usage columns will show "N/A".
+// quota may be nil when no ResourceQuota exists for the namespace.
 func Render(
 	namespace, cluster, user string,
 	pods []kube.PodSpec,
 	metrics map[string]kube.PodMetrics,
+	quota *kube.NamespaceQuota,
 	thresh threshold.Config,
 	st Styles,
 ) string {
@@ -73,8 +75,16 @@ func Render(
 	}
 
 	sb.WriteString(renderThickDivider(st))
-	sb.WriteString(renderTotalsRow(totals, thresh, st))
+	sb.WriteString(renderTotalsRow(totals, st))
 	sb.WriteString("\n")
+	if quota != nil {
+		sb.WriteString(renderPodDivider(st))
+		sb.WriteString(renderQuotaRow(quota, st))
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
+		sb.WriteString("\n")
+	}
 
 	if len(warns) > 0 {
 		sb.WriteString("\n")
@@ -159,7 +169,7 @@ func renderThickDivider(st Styles) string {
 	return st.Header.Render(strings.Repeat("═", total)) + "\n"
 }
 
-func renderTotalsRow(t tableTotals, thresh threshold.Config, st Styles) string {
+func renderTotalsRow(t tableTotals, st Styles) string {
 	fmtOrDash := func(v int64, fn func(int64) string) string {
 		if v == 0 {
 			return "—"
@@ -192,6 +202,33 @@ func renderTotalsRow(t tableTotals, thresh threshold.Config, st Styles) string {
 		st.Header.Width(colVal).Render(fmtOrDash(t.memLimBytes, fmtBytes)),
 		st.Header.Width(colVal).Render(memUseStr),
 		st.PlainCell.Width(colPct).Render("—"),
+	}
+	return strings.Join(cells, " ")
+}
+
+func renderQuotaRow(q *kube.NamespaceQuota, st Styles) string {
+	qStr := func(v resource.Quantity) string {
+		if v.IsZero() {
+			return "—"
+		}
+		return v.String()
+	}
+	cells := []string{
+		st.Header.Width(colPod).Render("ResourceQuota"),
+		st.PlainCell.Width(colPhase).Render(""),
+		st.Divider.Width(colDivider).Render("│"),
+		st.PlainCell.Width(colContainer).Render(""),
+		st.PlainCell.Width(colStatus).Render(""),
+		st.PlainCell.Width(colReady).Render(""),
+		st.PlainCell.Width(colRestarts).Render(""),
+		st.Header.Width(colVal).Render(qStr(q.CPURequest)),
+		st.Header.Width(colVal).Render(qStr(q.CPULimit)),
+		st.PlainCell.Width(colVal).Render(""),
+		st.PlainCell.Width(colPct).Render(""),
+		st.Header.Width(colVal).Render(qStr(q.MemRequest)),
+		st.Header.Width(colVal).Render(qStr(q.MemLimit)),
+		st.PlainCell.Width(colVal).Render(""),
+		st.PlainCell.Width(colPct).Render(""),
 	}
 	return strings.Join(cells, " ")
 }

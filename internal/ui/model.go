@@ -23,6 +23,7 @@ type Model struct {
 	// current display state
 	pods    []kube.PodSpec
 	metrics map[string]kube.PodMetrics
+	quota   *kube.NamespaceQuota
 	err     error
 }
 
@@ -30,6 +31,7 @@ type Model struct {
 type fetchResult struct {
 	pods    []kube.PodSpec
 	metrics map[string]kube.PodMetrics
+	quota   *kube.NamespaceQuota
 	err     error
 }
 
@@ -74,6 +76,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetchResult:
 		m.pods = msg.pods
 		m.metrics = msg.metrics
+		m.quota = msg.quota
 		m.err = msg.err
 
 		if m.noWatch {
@@ -99,10 +102,10 @@ func (m Model) View() string {
 	if m.pods == nil {
 		return "Loading…\n"
 	}
-	return Render(m.namespace, m.cluster, m.user, m.pods, m.metrics, m.thresh, m.styles)
+	return Render(m.namespace, m.cluster, m.user, m.pods, m.metrics, m.quota, m.thresh, m.styles)
 }
 
-// fetchCmd returns a tea.Cmd that fetches pods and metrics in the background.
+// fetchCmd returns a tea.Cmd that fetches pods, metrics, and quota in the background.
 func (m Model) fetchCmd() tea.Cmd {
 	return func() tea.Msg {
 		pods, err := m.client.ListPods(m.namespace)
@@ -113,6 +116,10 @@ func (m Model) fetchCmd() tea.Cmd {
 		if err != nil {
 			return fetchResult{err: err}
 		}
-		return fetchResult{pods: pods, metrics: metrics}
+		quota, err := m.client.GetResourceQuota(m.namespace)
+		if err != nil {
+			return fetchResult{err: err}
+		}
+		return fetchResult{pods: pods, metrics: metrics, quota: quota}
 	}
 }
