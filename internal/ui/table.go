@@ -133,9 +133,8 @@ func Render(
 		sb.WriteString(st.Divider.Render("◌  ResourceQuota hidden (label selector active)"))
 		sb.WriteString("\n")
 	} else if quota != nil {
-		sb.WriteString(renderPodDivider(st, lay))
-		sb.WriteString(renderQuotaRow(quota, totals, thresh, st, lay))
 		sb.WriteString("\n")
+		sb.WriteString(renderQuotaSection(quota, totals, thresh, st))
 	} else {
 		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
 		sb.WriteString("\n")
@@ -265,42 +264,66 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 	return strings.Join(cells, " ")
 }
 
-func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Config, st Styles, lay layout) string {
+func renderQuotaSection(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Config, st Styles) string {
+	const (
+		qLabel = 14
+		qVal   = 10
+	)
+	// 6 cells (label │ v v v v) with 5 spaces between them
+	lineWidth := qLabel + 1 + qVal*4 + 5
+
+	sep := st.Divider.Width(1).Render("│")
+	hrule := st.Divider.Render(strings.Repeat("─", lineWidth))
+
 	qStr := func(v resource.Quantity) string {
 		if v.IsZero() {
 			return "—"
 		}
 		return v.String()
 	}
-	pctCell := func(used, quota int64) (string, threshold.Level) {
-		if quota == 0 {
-			return "—", threshold.LevelOK
+	fmtOrDash := func(v int64, fn func(int64) string) string {
+		if v == 0 {
+			return "—"
 		}
-		pct := float64(used) / float64(quota) * 100
-		return fmt.Sprintf("%.0f%%", pct), thresh.Classify(pct)
+		return fn(v)
+	}
+	usageStyle := func(used, quota int64) lipgloss.Style {
+		if quota == 0 {
+			return st.PlainCell
+		}
+		return levelStyle(st, thresh.Classify(float64(used)/float64(quota)*100))
 	}
 
-	cpuPct, cpuLvl := pctCell(t.cpuReqMilli, q.CPURequest.MilliValue())
-	memPct, memLvl := pctCell(t.memReqBytes, q.MemRequest.Value())
-
-	cells := []string{
-		st.Header.Width(lay.podCol).Render("ResourceQuota"),
-		st.PlainCell.Width(colPhase).Render(""),
-		st.Divider.Width(colDivider).Render("│"),
-		st.PlainCell.Width(lay.containerCol).Render(""),
-		st.PlainCell.Width(colStatus).Render(""),
-		st.PlainCell.Width(colReady).Render(""),
-		st.PlainCell.Width(colRestarts).Render(""),
-		st.Header.Width(colVal).Render(qStr(q.CPURequest)),
-		st.Header.Width(colVal).Render(qStr(q.CPULimit)),
-		st.PlainCell.Width(colVal).Render(""),
-		levelStyle(st, cpuLvl).Width(colPct).Render(cpuPct),
-		st.Header.Width(colVal).Render(qStr(q.MemRequest)),
-		st.Header.Width(colVal).Render(qStr(q.MemLimit)),
-		st.PlainCell.Width(colVal).Render(""),
-		levelStyle(st, memLvl).Width(colPct).Render(memPct),
+	row := func(cells ...string) string {
+		return strings.Join(cells, " ")
 	}
-	return strings.Join(cells, " ")
+
+	header := row(
+		st.Header.Width(qLabel).Render("ResourceQuota"),
+		sep,
+		st.Header.Width(qVal).Render("CPU-REQ"),
+		st.Header.Width(qVal).Render("CPU-LIM"),
+		st.Header.Width(qVal).Render("MEM-REQ"),
+		st.Header.Width(qVal).Render("MEM-LIM"),
+	)
+	allowed := row(
+		st.PlainCell.Width(qLabel).Render("allowed"),
+		sep,
+		st.PlainCell.Width(qVal).Render(qStr(q.CPURequest)),
+		st.PlainCell.Width(qVal).Render(qStr(q.CPULimit)),
+		st.PlainCell.Width(qVal).Render(qStr(q.MemRequest)),
+		st.PlainCell.Width(qVal).Render(qStr(q.MemLimit)),
+	)
+	usage := row(
+		st.PlainCell.Width(qLabel).Render("usage"),
+		sep,
+		usageStyle(t.cpuReqMilli, q.CPURequest.MilliValue()).Width(qVal).Render(fmtOrDash(t.cpuReqMilli, fmtMilliCPUAuto)),
+		usageStyle(t.cpuLimMilli, q.CPULimit.MilliValue()).Width(qVal).Render(fmtOrDash(t.cpuLimMilli, fmtMilliCPUAuto)),
+		usageStyle(t.memReqBytes, q.MemRequest.Value()).Width(qVal).Render(fmtOrDash(t.memReqBytes, fmtBytes)),
+		usageStyle(t.memLimBytes, q.MemLimit.Value()).Width(qVal).Render(fmtOrDash(t.memLimBytes, fmtBytes)),
+	)
+
+	return header + "\n" + hrule + "\n" + allowed + "\n" + usage + "\n"
 }
 
 func renderPodDivider(st Styles, lay layout) string {
