@@ -186,8 +186,8 @@ func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, 
 	warns := computeWarnings(pods, metrics, thresh)
 	lay := newLayout(pods, wide)
 	var sb strings.Builder
+	sb.WriteString("\n")
 	if len(warns) > 0 {
-		sb.WriteString("\n")
 		sb.WriteString(st.Warn.Render("⚠  Warnings:"))
 		sb.WriteString("\n")
 		for _, w := range warns {
