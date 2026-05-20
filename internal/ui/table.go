@@ -412,7 +412,7 @@ func renderPodRows(
 
 		statusSym, statusStyle := containerStatusCell(c.Status, pod.Phase, rowSt)
 		readySym, readyStyle := containerReadyCell(c.Ready, pod.Phase, rowSt)
-		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, rowSt)
+		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, c.LastRestartReason, rowSt)
 		cells := []string{
 			pStyle.Width(lay.podCol).Render(podLabel),
 			phaseStyle.Width(colPhase).Render(phaseLabel),
@@ -572,12 +572,36 @@ func containerReadyCell(ready bool, podPhase string, st Styles) (string, lipglos
 	return "✘", st.Crit
 }
 
-func containerRestartsCell(restarts int32, st Styles) (string, lipgloss.Style) {
-	s := fmt.Sprintf("%d", restarts)
-	if restarts > 0 {
-		return s, st.Warn
+func abbreviateReason(r string) string {
+	switch r {
+	case "OOMKilled":
+		return "OOM"
+	case "Error":
+		return "Err"
+	case "ContainerCannotRun":
+		return "!Run"
+	case "DeadlineExceeded":
+		return "Tmout"
+	default:
+		if len(r) > 5 {
+			return r[:5]
+		}
+		return r
 	}
-	return s, st.PlainCell
+}
+
+func containerRestartsCell(restarts int32, reason string, st Styles) (string, lipgloss.Style) {
+	if restarts == 0 {
+		return "0", st.PlainCell
+	}
+	s := fmt.Sprintf("%d", restarts)
+	if reason != "" {
+		s = fmt.Sprintf("%d %s", restarts, abbreviateReason(reason))
+	}
+	if reason == "OOMKilled" {
+		return s, st.Crit
+	}
+	return s, st.Warn
 }
 
 func containerStatusCell(status, podPhase string, st Styles) (string, lipgloss.Style) {

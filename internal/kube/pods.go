@@ -11,14 +11,15 @@ import (
 
 // ContainerSpec holds a container's resource requests and limits.
 type ContainerSpec struct {
-	Name       string
-	Status     string // "Running", "Waiting", "Terminated", "Unknown"
-	Ready      bool
-	Restarts   int32
-	CPURequest resource.Quantity
-	CPULimit   resource.Quantity
-	MemRequest resource.Quantity
-	MemLimit   resource.Quantity
+	Name              string
+	Status            string // "Running", "Waiting", "Terminated", "Unknown"
+	Ready             bool
+	Restarts          int32
+	LastRestartReason string // e.g. "OOMKilled", "Error" — empty when restarts == 0
+	CPURequest        resource.Quantity
+	CPULimit          resource.Quantity
+	MemRequest        resource.Quantity
+	MemLimit          resource.Quantity
 }
 
 // PodSpec holds a pod and its containers' resource specs.
@@ -62,15 +63,23 @@ func containerStateStr(s corev1.ContainerState) string {
 func podToSpec(pod corev1.Pod) PodSpec {
 	var restarts int32
 	type containerInfo struct {
-		state    string
-		ready    bool
-		restarts int32
+		state             string
+		ready             bool
+		restarts          int32
+		lastRestartReason string
+	}
+
+	lastReason := func(cs corev1.ContainerStatus) string {
+		if cs.RestartCount > 0 && cs.LastTerminationState.Terminated != nil {
+			return cs.LastTerminationState.Terminated.Reason
+		}
+		return ""
 	}
 
 	infoMap := make(map[string]containerInfo)
 	for _, cs := range pod.Status.ContainerStatuses {
 		restarts += cs.RestartCount
-		infoMap[cs.Name] = containerInfo{containerStateStr(cs.State), cs.Ready, cs.RestartCount}
+		infoMap[cs.Name] = containerInfo{containerStateStr(cs.State), cs.Ready, cs.RestartCount, lastReason(cs)}
 	}
 	// Native sidecar init containers (restartPolicy: Always, k8s 1.29+) have their
 	// own status slice; include them so sidecars like istio-proxy are not invisible.
@@ -79,7 +88,7 @@ func podToSpec(pod corev1.Pod) PodSpec {
 			continue
 		}
 		restarts += cs.RestartCount
-		infoMap[cs.Name] = containerInfo{containerStateStr(cs.State), cs.Ready, cs.RestartCount}
+		infoMap[cs.Name] = containerInfo{containerStateStr(cs.State), cs.Ready, cs.RestartCount, lastReason(cs)}
 	}
 
 	appendContainer := func(containers []ContainerSpec, c corev1.Container) []ContainerSpec {
@@ -88,14 +97,15 @@ func podToSpec(pod corev1.Pod) PodSpec {
 			info.state = "Unknown"
 		}
 		return append(containers, ContainerSpec{
-			Name:       c.Name,
-			Status:     info.state,
-			Ready:      info.ready,
-			Restarts:   info.restarts,
-			CPURequest: quantityOrZero(c.Resources.Requests, corev1.ResourceCPU),
-			CPULimit:   quantityOrZero(c.Resources.Limits, corev1.ResourceCPU),
-			MemRequest: quantityOrZero(c.Resources.Requests, corev1.ResourceMemory),
-			MemLimit:   quantityOrZero(c.Resources.Limits, corev1.ResourceMemory),
+			Name:              c.Name,
+			Status:            info.state,
+			Ready:             info.ready,
+			Restarts:          info.restarts,
+			LastRestartReason: info.lastRestartReason,
+			CPURequest:        quantityOrZero(c.Resources.Requests, corev1.ResourceCPU),
+			CPULimit:          quantityOrZero(c.Resources.Limits, corev1.ResourceCPU),
+			MemRequest:        quantityOrZero(c.Resources.Requests, corev1.ResourceMemory),
+			MemLimit:          quantityOrZero(c.Resources.Limits, corev1.ResourceMemory),
 		})
 	}
 
