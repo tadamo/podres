@@ -18,8 +18,9 @@ type Model struct {
 	user      string
 	thresh    threshold.Config
 	styles    Styles
-	interval  time.Duration
-	noWatch   bool
+	interval     time.Duration
+	noWatch      bool
+	podDividers  bool
 
 	// current display state
 	pods    []kube.PodSpec
@@ -47,17 +48,19 @@ func New(
 	styles Styles,
 	interval time.Duration,
 	noWatch bool,
+	podDividers bool,
 ) Model {
 	return Model{
-		client:    client,
-		namespace: namespace,
-		selector:  selector,
-		cluster:   cluster,
-		user:      user,
-		thresh:    thresh,
-		styles:    styles,
-		interval:  interval,
-		noWatch:   noWatch,
+		client:      client,
+		namespace:   namespace,
+		selector:    selector,
+		cluster:     cluster,
+		user:        user,
+		thresh:      thresh,
+		styles:      styles,
+		interval:    interval,
+		noWatch:     noWatch,
+		podDividers: podDividers,
 	}
 }
 
@@ -104,7 +107,7 @@ func (m Model) View() string {
 	if m.pods == nil {
 		return "Loading…\n"
 	}
-	return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles)
+	return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.podDividers)
 }
 
 // fetchCmd returns a tea.Cmd that fetches pods, metrics, and quota in the background.

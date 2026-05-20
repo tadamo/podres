@@ -52,6 +52,7 @@ func Render(
 	quota *kube.NamespaceQuota,
 	thresh threshold.Config,
 	st Styles,
+	podDividers bool,
 ) string {
 	var sb strings.Builder
 
@@ -64,7 +65,9 @@ func Render(
 
 	var warns []warningEntry
 	for _, pod := range pods {
-		sb.WriteString(renderPodDivider(st))
+		if podDividers {
+			sb.WriteString(renderPodDivider(st))
+		}
 		var pm *kube.PodMetrics
 		if metrics != nil {
 			if m, ok := metrics[pod.Name]; ok {
@@ -334,8 +337,8 @@ func renderPodRows(
 			phaseStyle = st.PlainCell
 		}
 
-		statusSym, statusStyle := containerStatusCell(c.Status, st)
-		readySym, readyStyle := containerReadyCell(c.Ready, st)
+		statusSym, statusStyle := containerStatusCell(c.Status, pod.Phase, st)
+		readySym, readyStyle := containerReadyCell(c.Ready, pod.Phase, st)
 		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, st)
 		cells := []string{
 			pStyle.Width(colPod).Render(podLabel),
@@ -455,9 +458,12 @@ func podPhaseCell(phase string, st Styles) (string, lipgloss.Style) {
 	}
 }
 
-func containerReadyCell(ready bool, st Styles) (string, lipgloss.Style) {
+func containerReadyCell(ready bool, podPhase string, st Styles) (string, lipgloss.Style) {
 	if ready {
 		return "✔", st.OK
+	}
+	if podPhase == "Succeeded" {
+		return "✘", st.PlainCell
 	}
 	return "✘", st.Crit
 }
@@ -470,13 +476,16 @@ func containerRestartsCell(restarts int32, st Styles) (string, lipgloss.Style) {
 	return s, st.PlainCell
 }
 
-func containerStatusCell(status string, st Styles) (string, lipgloss.Style) {
+func containerStatusCell(status, podPhase string, st Styles) (string, lipgloss.Style) {
 	switch status {
 	case "Running":
 		return "● Running", st.OK
 	case "Waiting":
 		return "◌ Waiting", st.Warn
 	case "Terminated":
+		if podPhase == "Succeeded" {
+			return "✔ Terminated", st.OK
+		}
 		return "✕ Terminated", st.Crit
 	default:
 		return "? Unknown", st.PlainCell

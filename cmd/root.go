@@ -23,6 +23,7 @@ type Options struct {
 	ThresholdWarn  int
 	ThresholdCrit  int
 	NoColor        bool
+	PodDividers    bool
 }
 
 var rootCmd = &cobra.Command{
@@ -57,6 +58,7 @@ func init() {
 	f.Int("threshold-warn", 75, "yellow warning threshold (percent)")
 	f.Int("threshold-crit", 95, "red critical threshold (percent)")
 	f.Bool("no-color", false, "disable colorized output")
+	f.Bool("pod-dividers", false, "draw a horizontal rule between each pod")
 }
 
 func optionsFromFlags(cmd *cobra.Command) (Options, error) {
@@ -70,6 +72,7 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 	warnPct, _ := f.GetInt("threshold-warn")
 	critPct, _ := f.GetInt("threshold-crit")
 	noColor, _ := f.GetBool("no-color")
+	podDividers, _ := f.GetBool("pod-dividers")
 
 	if warnPct >= critPct {
 		return Options{}, fmt.Errorf("--threshold-warn (%d) must be less than --threshold-crit (%d)", warnPct, critPct)
@@ -85,6 +88,7 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 		ThresholdWarn: warnPct,
 		ThresholdCrit: critPct,
 		NoColor:       noColor,
+		PodDividers:   podDividers,
 	}, nil
 }
 
@@ -112,7 +116,7 @@ func runPodres(opts Options) error {
 		Crit: opts.ThresholdCrit,
 	}
 	styles := ui.DefaultStyles(opts.NoColor)
-	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch)
+	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch, opts.PodDividers)
 
 	var progOpts []tea.ProgramOption
 	if !opts.NoWatch {
