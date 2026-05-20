@@ -316,9 +316,14 @@ func renderPodRows(
 	var sb strings.Builder
 	var warns []warningEntry
 
-	podStyle := st.PodName
+	rowSt := st
+	if pod.Phase != "Running" {
+		rowSt = dimStyles(st)
+	}
+
+	podStyle := rowSt.PodName
 	if pod.Restarts > 0 {
-		podStyle = st.PodRestart
+		podStyle = rowSt.PodRestart
 	}
 
 	for i, c := range pod.Containers {
@@ -365,11 +370,11 @@ func renderPodRows(
 				fmt.Sprintf("MEM %s — %s", memPctStr, levelLabel(memLvl))})
 		}
 
-		cStyle := st.Container
+		cStyle := rowSt.Container
 		if isSidecar(c.Name) {
-			cStyle = st.Sidecar
+			cStyle = rowSt.Sidecar
 		}
-		pStyle := st.PlainCell
+		pStyle := rowSt.PlainCell
 		if i == 0 {
 			pStyle = podStyle
 		}
@@ -378,31 +383,31 @@ func renderPodRows(
 		var phaseSym string
 		var phaseStyle lipgloss.Style
 		if i == 0 {
-			phaseSym, phaseStyle = podPhaseCell(pod.Phase, st)
+			phaseSym, phaseStyle = podPhaseCell(pod.Phase, rowSt)
 			phaseLabel = phaseSym
 		} else {
-			phaseStyle = st.PlainCell
+			phaseStyle = rowSt.PlainCell
 		}
 
-		statusSym, statusStyle := containerStatusCell(c.Status, pod.Phase, st)
-		readySym, readyStyle := containerReadyCell(c.Ready, pod.Phase, st)
-		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, st)
+		statusSym, statusStyle := containerStatusCell(c.Status, pod.Phase, rowSt)
+		readySym, readyStyle := containerReadyCell(c.Ready, pod.Phase, rowSt)
+		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, rowSt)
 		cells := []string{
 			pStyle.Width(lay.podCol).Render(podLabel),
 			phaseStyle.Width(colPhase).Render(phaseLabel),
-			st.Divider.Width(colDivider).Render("│"),
+			rowSt.Divider.Width(colDivider).Render("│"),
 			cStyle.Width(lay.containerCol).Render(truncate(c.Name, lay.containerCol)),
 			statusStyle.Width(colStatus).Render(statusSym),
 			readyStyle.Width(colReady).Render(readySym),
 			restartsStyle.Width(colRestarts).Render(restartsStr),
-			st.PlainCell.Width(colVal).Render(quantityStr(c.CPURequest)),
-			st.PlainCell.Width(colVal).Render(quantityStr(c.CPULimit)),
-			st.PlainCell.Width(colVal).Render(cpuUseStr),
-			levelStyle(st, cpuLvl).Width(colPct).Render(cpuPctStr),
-			st.PlainCell.Width(colVal).Render(quantityStr(c.MemRequest)),
-			st.PlainCell.Width(colVal).Render(quantityStr(c.MemLimit)),
-			st.PlainCell.Width(colVal).Render(memUseStr),
-			levelStyle(st, memLvl).Width(colPct).Render(memPctStr),
+			rowSt.PlainCell.Width(colVal).Render(quantityStr(c.CPURequest)),
+			rowSt.PlainCell.Width(colVal).Render(quantityStr(c.CPULimit)),
+			rowSt.PlainCell.Width(colVal).Render(cpuUseStr),
+			levelStyle(rowSt, cpuLvl).Width(colPct).Render(cpuPctStr),
+			rowSt.PlainCell.Width(colVal).Render(quantityStr(c.MemRequest)),
+			rowSt.PlainCell.Width(colVal).Render(quantityStr(c.MemLimit)),
+			rowSt.PlainCell.Width(colVal).Render(memUseStr),
+			levelStyle(rowSt, memLvl).Width(colPct).Render(memPctStr),
 		}
 		sb.WriteString(strings.Join(cells, " "))
 		sb.WriteString("\n")
@@ -445,6 +450,26 @@ func maybeMilliValue(cm *kube.ContainerMetrics, cpu bool) int64 {
 		return cm.CPUUsage.MilliValue()
 	}
 	return cm.MemUsage.Value()
+}
+
+// dimStyles returns a copy of st with Faint(true) applied to every style,
+// preserving all color and weight attributes so indicators stay recognizable.
+func dimStyles(st Styles) Styles {
+	d := func(s lipgloss.Style) lipgloss.Style { return s.Faint(true) }
+	return Styles{
+		OK:         d(st.OK),
+		Warn:       d(st.Warn),
+		Crit:       d(st.Crit),
+		Header:     d(st.Header),
+		PodName:    d(st.PodName),
+		PodRestart: d(st.PodRestart),
+		Container:  d(st.Container),
+		Sidecar:    d(st.Sidecar),
+		PlainCell:  d(st.PlainCell),
+		Divider:    d(st.Divider),
+		StatusLine: d(st.StatusLine),
+		Dim:        d(st.Dim),
+	}
 }
 
 func levelStyle(st Styles, lvl threshold.Level) lipgloss.Style {
