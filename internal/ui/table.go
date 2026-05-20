@@ -24,16 +24,59 @@ const (
 	colPct       = 7  // CPU%, MEM%
 )
 
+// fixedWidths holds the widths of all columns except POD and CONTAINER,
+// in the order they appear after those two variable-width columns.
+// Index mapping: 0=POD(variable), 1=PHASE, 2=DIVIDER, 3=CONTAINER(variable),
+// 4=STATUS, 5=READY, 6=RESTARTS, 7..10=CPU cols, 11..14=MEM cols.
 var columnHeaders = []string{
 	"POD", "PHASE", "│", "CONTAINER", "STATE", "READY", "RESTARTS",
 	"CPU-REQ", "CPU-LIM", "CPU-USE", "CPU%",
 	"MEM-REQ", "MEM-LIM", "MEM-USE", "MEM%",
 }
 
-var columnWidths = []int{
-	colPod, colPhase, colDivider, colContainer, colStatus, colReady, colRestarts,
-	colVal, colVal, colVal, colPct,
-	colVal, colVal, colVal, colPct,
+// layout holds the effective widths for the two variable-width columns.
+type layout struct {
+	podCol       int
+	containerCol int
+}
+
+// newLayout returns a layout using the default column widths, or in wide mode
+// expands them to fit the longest pod and container names in the data.
+func newLayout(pods []kube.PodSpec, wide bool) layout {
+	if !wide {
+		return layout{colPod, colContainer}
+	}
+	pc, cc := colPod, colContainer
+	for _, pod := range pods {
+		if n := len(pod.Name); n > pc {
+			pc = n
+		}
+		for _, c := range pod.Containers {
+			if n := len(c.Name); n > cc {
+				cc = n
+			}
+		}
+	}
+	return layout{pc, cc}
+}
+
+// colWidths returns the full ordered slice of column widths for the given layout.
+func (l layout) colWidths() []int {
+	return []int{
+		l.podCol, colPhase, colDivider, l.containerCol, colStatus, colReady, colRestarts,
+		colVal, colVal, colVal, colPct,
+		colVal, colVal, colVal, colPct,
+	}
+}
+
+// totalWidth returns the total rendered width including inter-cell spaces.
+func (l layout) totalWidth() int {
+	widths := l.colWidths()
+	w := len(widths) - 1 // spaces between cells
+	for _, cw := range widths {
+		w += cw
+	}
+	return w
 }
 
 type warningEntry struct {
@@ -53,12 +96,15 @@ func Render(
 	thresh threshold.Config,
 	st Styles,
 	podDividers bool,
+	wide bool,
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(renderStatusLine(namespace, cluster, user, st))
+	lay := newLayout(pods, wide)
+
+	sb.WriteString(renderStatusLine(namespace, cluster, user, st, lay))
 	sb.WriteString("\n\n")
-	sb.WriteString(renderHeaderRow(st))
+	sb.WriteString(renderHeaderRow(st, lay))
 	sb.WriteString("\n")
 
 	totals := computeTotals(pods, metrics)
@@ -66,7 +112,7 @@ func Render(
 	var warns []warningEntry
 	for _, pod := range pods {
 		if podDividers {
-			sb.WriteString(renderPodDivider(st))
+			sb.WriteString(renderPodDivider(st, lay))
 		}
 		var pm *kube.PodMetrics
 		if metrics != nil {
@@ -74,20 +120,20 @@ func Render(
 				pm = &m
 			}
 		}
-		rows, w := renderPodRows(pod, pm, thresh, st)
+		rows, w := renderPodRows(pod, pm, thresh, st, lay)
 		sb.WriteString(rows)
 		warns = append(warns, w...)
 	}
 
-	sb.WriteString(renderThickDivider(st))
-	sb.WriteString(renderTotalsRow(totals, st))
+	sb.WriteString(renderThickDivider(st, lay))
+	sb.WriteString(renderTotalsRow(totals, st, lay))
 	sb.WriteString("\n")
 	if selector != "" {
 		sb.WriteString(st.Divider.Render("◌  ResourceQuota hidden (label selector active)"))
 		sb.WriteString("\n")
 	} else if quota != nil {
-		sb.WriteString(renderPodDivider(st))
-		sb.WriteString(renderQuotaRow(quota, totals, thresh, st))
+		sb.WriteString(renderPodDivider(st, lay))
+		sb.WriteString(renderQuotaRow(quota, totals, thresh, st, lay))
 		sb.WriteString("\n")
 	} else {
 		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
@@ -107,15 +153,7 @@ func Render(
 	return sb.String()
 }
 
-func tableWidth() int {
-	w := len(columnWidths) - 1 // spaces between cells
-	for _, cw := range columnWidths {
-		w += cw
-	}
-	return w
-}
-
-func renderStatusLine(namespace, cluster, user string, st Styles) string {
+func renderStatusLine(namespace, cluster, user string, st Styles, lay layout) string {
 	now := time.Now()
 	tz, _ := now.Zone()
 
@@ -127,21 +165,19 @@ func renderStatusLine(namespace, cluster, user string, st Styles) string {
 		now.Format("01/02/2006 3:04:05 PM"), tz,
 	))
 
-	gap := tableWidth() - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		gap = 1
-	}
+	gap := max(1, lay.totalWidth()-lipgloss.Width(left)-lipgloss.Width(right))
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func renderHeaderRow(st Styles) string {
+func renderHeaderRow(st Styles, lay layout) string {
+	widths := lay.colWidths()
 	cells := make([]string, len(columnHeaders))
 	for i, h := range columnHeaders {
 		style := st.Header
 		if h == "│" {
 			style = st.Divider
 		}
-		cells[i] = style.Width(columnWidths[i]).Render(h)
+		cells[i] = style.Width(widths[i]).Render(h)
 	}
 	return strings.Join(cells, " ")
 }
@@ -187,11 +223,11 @@ func computeTotals(pods []kube.PodSpec, metrics map[string]kube.PodMetrics) tabl
 	return t
 }
 
-func renderThickDivider(st Styles) string {
-	return st.Header.Render(strings.Repeat("═", tableWidth())) + "\n"
+func renderThickDivider(st Styles, lay layout) string {
+	return st.Header.Render(strings.Repeat("═", lay.totalWidth())) + "\n"
 }
 
-func renderTotalsRow(t tableTotals, st Styles) string {
+func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 	fmtOrDash := func(v int64, fn func(int64) string) string {
 		if v == 0 {
 			return "—"
@@ -209,10 +245,10 @@ func renderTotalsRow(t tableTotals, st Styles) string {
 	}
 
 	cells := []string{
-		st.Header.Width(colPod).Render("TOTAL"),
+		st.Header.Width(lay.podCol).Render("TOTAL"),
 		st.PlainCell.Width(colPhase).Render(""),
 		st.Divider.Width(colDivider).Render("│"),
-		st.PlainCell.Width(colContainer).Render(""),
+		st.PlainCell.Width(lay.containerCol).Render(""),
 		st.PlainCell.Width(colStatus).Render(""),
 		st.PlainCell.Width(colReady).Render(""),
 		st.PlainCell.Width(colRestarts).Render(""),
@@ -228,7 +264,7 @@ func renderTotalsRow(t tableTotals, st Styles) string {
 	return strings.Join(cells, " ")
 }
 
-func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Config, st Styles) string {
+func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Config, st Styles, lay layout) string {
 	qStr := func(v resource.Quantity) string {
 		if v.IsZero() {
 			return "—"
@@ -247,10 +283,10 @@ func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Conf
 	memPct, memLvl := pctCell(t.memReqBytes, q.MemRequest.Value())
 
 	cells := []string{
-		st.Header.Width(colPod).Render("ResourceQuota"),
+		st.Header.Width(lay.podCol).Render("ResourceQuota"),
 		st.PlainCell.Width(colPhase).Render(""),
 		st.Divider.Width(colDivider).Render("│"),
-		st.PlainCell.Width(colContainer).Render(""),
+		st.PlainCell.Width(lay.containerCol).Render(""),
 		st.PlainCell.Width(colStatus).Render(""),
 		st.PlainCell.Width(colReady).Render(""),
 		st.PlainCell.Width(colRestarts).Render(""),
@@ -266,8 +302,8 @@ func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Conf
 	return strings.Join(cells, " ")
 }
 
-func renderPodDivider(st Styles) string {
-	return st.Divider.Render(strings.Repeat("─", tableWidth())) + "\n"
+func renderPodDivider(st Styles, lay layout) string {
+	return st.Divider.Render(strings.Repeat("─", lay.totalWidth())) + "\n"
 }
 
 func renderPodRows(
@@ -275,6 +311,7 @@ func renderPodRows(
 	pm *kube.PodMetrics,
 	thresh threshold.Config,
 	st Styles,
+	lay layout,
 ) (string, []warningEntry) {
 	var sb strings.Builder
 	var warns []warningEntry
@@ -288,7 +325,7 @@ func renderPodRows(
 		// Only the first container row shows the pod name.
 		podLabel := ""
 		if i == 0 {
-			podLabel = truncate(pod.Name, colPod)
+			podLabel = truncate(pod.Name, lay.podCol)
 		}
 
 		var cm *kube.ContainerMetrics
@@ -351,10 +388,10 @@ func renderPodRows(
 		readySym, readyStyle := containerReadyCell(c.Ready, pod.Phase, st)
 		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, st)
 		cells := []string{
-			pStyle.Width(colPod).Render(podLabel),
+			pStyle.Width(lay.podCol).Render(podLabel),
 			phaseStyle.Width(colPhase).Render(phaseLabel),
 			st.Divider.Width(colDivider).Render("│"),
-			cStyle.Width(colContainer).Render(truncate(c.Name, colContainer)),
+			cStyle.Width(lay.containerCol).Render(truncate(c.Name, lay.containerCol)),
 			statusStyle.Width(colStatus).Render(statusSym),
 			readyStyle.Width(colReady).Render(readySym),
 			restartsStyle.Width(colRestarts).Render(restartsStr),
@@ -474,7 +511,10 @@ func containerReadyCell(ready bool, podPhase string, st Styles) (string, lipglos
 	if ready {
 		return "✔", st.OK
 	}
-	if podPhase == "Succeeded" || podPhase == "Terminating" {
+	if podPhase == "Succeeded" {
+		return "—", st.Dim
+	}
+	if podPhase == "Terminating" {
 		return "✘", st.PlainCell
 	}
 	return "✘", st.Crit

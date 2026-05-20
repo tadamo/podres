@@ -21,6 +21,7 @@ type Model struct {
 	interval     time.Duration
 	noWatch      bool
 	podDividers  bool
+	wide         bool
 
 	// current display state
 	pods    []kube.PodSpec
@@ -49,6 +50,7 @@ func New(
 	interval time.Duration,
 	noWatch bool,
 	podDividers bool,
+	wide bool,
 ) Model {
 	return Model{
 		client:      client,
@@ -61,6 +63,7 @@ func New(
 		interval:    interval,
 		noWatch:     noWatch,
 		podDividers: podDividers,
+		wide:        wide,
 	}
 }
 
@@ -107,7 +110,7 @@ func (m Model) View() string {
 	if m.pods == nil {
 		return "Loading…\n"
 	}
-	return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.podDividers)
+	return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide)
 }
 
 // fetchCmd returns a tea.Cmd that fetches pods, metrics, and quota in the background.
