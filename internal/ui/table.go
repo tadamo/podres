@@ -463,6 +463,8 @@ func podPhaseCell(phase string, st Styles) (string, lipgloss.Style) {
 		return "✔ Succeeded", st.OK
 	case "Failed":
 		return "✕ Failed", st.Crit
+	case "Terminating":
+		return "◌ Terminating", st.Warn
 	default:
 		return "? Unknown", st.PlainCell
 	}
@@ -472,7 +474,7 @@ func containerReadyCell(ready bool, podPhase string, st Styles) (string, lipglos
 	if ready {
 		return "✔", st.OK
 	}
-	if podPhase == "Succeeded" {
+	if podPhase == "Succeeded" || podPhase == "Terminating" {
 		return "✘", st.PlainCell
 	}
 	return "✘", st.Crit
@@ -493,7 +495,7 @@ func containerStatusCell(status, podPhase string, st Styles) (string, lipgloss.S
 	case "Waiting":
 		return "◌ Waiting", st.Warn
 	case "Terminated":
-		if podPhase == "Succeeded" {
+		if podPhase == "Succeeded" || podPhase == "Terminating" {
 			return "✔ Terminated", st.OK
 		}
 		return "✕ Terminated", st.Crit

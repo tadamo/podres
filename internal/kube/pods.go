@@ -88,10 +88,15 @@ func podToSpec(pod corev1.Pod) PodSpec {
 		})
 	}
 
+	phase := string(pod.Status.Phase)
+	if pod.DeletionTimestamp != nil {
+		phase = "Terminating"
+	}
+
 	return PodSpec{
 		Namespace:  pod.Namespace,
 		Name:       pod.Name,
-		Phase:      string(pod.Status.Phase),
+		Phase:      phase,
 		Restarts:   restarts,
 		Containers: containers,
 	}
