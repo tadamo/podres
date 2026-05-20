@@ -83,34 +83,50 @@ type warningEntry struct {
 	pod, container, msg string
 }
 
-// Render builds the full terminal output from pod specs, live metrics, and display config.
-// metrics may be nil when metrics-server is unavailable; usage columns will show "N/A".
-// quota may be nil when no ResourceQuota exists for the namespace.
-// selector, when non-empty, suppresses the ResourceQuota row because the totals only
-// cover filtered pods and the percentage would be misleading.
-func Render(
+// RenderFixedHeader returns the pinned top portion: status line, ResourceQuota
+// section (or a placeholder message), blank line, column headers, and divider.
+// Its line count is variable — use strings.Count(result, "\n") to measure it.
+func RenderFixedHeader(
 	namespace, cluster, user, selector string,
 	pods []kube.PodSpec,
 	metrics map[string]kube.PodMetrics,
 	quota *kube.NamespaceQuota,
 	thresh threshold.Config,
 	st Styles,
-	podDividers bool,
 	wide bool,
 ) string {
-	var sb strings.Builder
-
 	lay := newLayout(pods, wide)
-
+	var sb strings.Builder
 	sb.WriteString(renderStatusLine(namespace, cluster, user, st, lay))
 	sb.WriteString("\n\n")
+	if selector != "" {
+		sb.WriteString(st.Divider.Render("◌  ResourceQuota hidden (label selector active)"))
+		sb.WriteString("\n")
+	} else if quota != nil {
+		sb.WriteString(renderQuotaSection(quota, computeTotals(pods, metrics), thresh, st))
+	} else {
+		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n")
 	sb.WriteString(renderHeaderRow(st, lay))
 	sb.WriteString("\n")
 	sb.WriteString(renderThickDivider(st, lay))
+	return sb.String()
+}
 
+// RenderBody returns the scrollable portion: pod rows and the TOTAL line.
+func RenderBody(
+	pods []kube.PodSpec,
+	metrics map[string]kube.PodMetrics,
+	thresh threshold.Config,
+	st Styles,
+	podDividers bool,
+	wide bool,
+) string {
+	lay := newLayout(pods, wide)
+	var sb strings.Builder
 	totals := computeTotals(pods, metrics)
-
-	var warns []warningEntry
 	for _, pod := range pods {
 		if podDividers {
 			sb.WriteString(renderPodDivider(st, lay))
@@ -121,36 +137,79 @@ func Render(
 				pm = &m
 			}
 		}
-		rows, w := renderPodRows(pod, pm, thresh, st, lay)
-		sb.WriteString(rows)
-		warns = append(warns, w...)
+		sb.WriteString(renderPodRows(pod, pm, thresh, st, lay))
 	}
-
 	sb.WriteString(renderThickDivider(st, lay))
 	sb.WriteString(renderTotalsRow(totals, st, lay))
 	sb.WriteString("\n")
-	if selector != "" {
-		sb.WriteString(st.Divider.Render("◌  ResourceQuota hidden (label selector active)"))
-		sb.WriteString("\n")
-	} else if quota != nil {
-		sb.WriteString("\n")
-		sb.WriteString(renderQuotaSection(quota, totals, thresh, st))
-	} else {
-		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
-		sb.WriteString("\n")
-	}
+	return sb.String()
+}
 
-	if len(warns) > 0 {
-		sb.WriteString("\n")
-		sb.WriteString(st.Warn.Render("⚠  Warnings:"))
-		sb.WriteString("\n")
-		for _, w := range warns {
-			fmt.Fprintf(&sb, "   %s (%s): %s\n",
-				st.Warn.Render(w.container), w.pod, w.msg)
+// computeWarnings returns threshold violation entries for all containers.
+func computeWarnings(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config) []warningEntry {
+	var warns []warningEntry
+	for _, pod := range pods {
+		var pm *kube.PodMetrics
+		if metrics != nil {
+			if m, ok := metrics[pod.Name]; ok {
+				pm = &m
+			}
+		}
+		for _, c := range pod.Containers {
+			var cm *kube.ContainerMetrics
+			if pm != nil {
+				for j := range pm.Containers {
+					if pm.Containers[j].Name == c.Name {
+						cm = &pm.Containers[j]
+						break
+					}
+				}
+			}
+			avail := cm != nil
+			_, cpuPct, cpuLvl := usageCells(avail, maybeMilliValue(cm, true), c.CPULimit.MilliValue(), c.CPURequest.MilliValue(), thresh, fmtMilliCPU)
+			_, memPct, memLvl := usageCells(avail, maybeMilliValue(cm, false), c.MemLimit.Value(), c.MemRequest.Value(), thresh, fmtBytes)
+			if cpuLvl >= threshold.LevelWarn {
+				warns = append(warns, warningEntry{pod.Name, c.Name, fmt.Sprintf("CPU %s — %s", cpuPct, levelLabel(cpuLvl))})
+			}
+			if memLvl >= threshold.LevelWarn {
+				warns = append(warns, warningEntry{pod.Name, c.Name, fmt.Sprintf("MEM %s — %s", memPct, levelLabel(memLvl))})
+			}
 		}
 	}
+	return warns
+}
 
+// RenderFixedFooter returns the pinned bottom portion: warnings, or empty string
+// when there are none.
+func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles) string {
+	warns := computeWarnings(pods, metrics, thresh)
+	if len(warns) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString(st.Warn.Render("⚠  Warnings:"))
+	sb.WriteString("\n")
+	for _, w := range warns {
+		fmt.Fprintf(&sb, "   %s (%s): %s\n", st.Warn.Render(w.container), w.pod, w.msg)
+	}
 	return sb.String()
+}
+
+// Render returns the complete output for --no-watch mode (header + body + footer).
+func Render(
+	namespace, cluster, user, selector string,
+	pods []kube.PodSpec,
+	metrics map[string]kube.PodMetrics,
+	quota *kube.NamespaceQuota,
+	thresh threshold.Config,
+	st Styles,
+	podDividers bool,
+	wide bool,
+) string {
+	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide) +
+		RenderBody(pods, metrics, thresh, st, podDividers, wide) +
+		RenderFixedFooter(pods, metrics, thresh, st)
 }
 
 func renderStatusLine(namespace, cluster, user string, st Styles, lay layout) string {
@@ -266,14 +325,9 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 
 func renderQuotaSection(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Config, st Styles) string {
 	const (
-		qLabel = 14
-		qVal   = 10
+		qLabel = 16 // fits "usage / allowed"
+		qVal   = 16 // fits "128.5Gi / 256Gi"
 	)
-	// 6 cells (label │ v v v v) with 5 spaces between them
-	lineWidth := qLabel + 1 + qVal*4 + 5
-
-	sep := st.Divider.Width(1).Render("│")
-	hrule := st.Divider.Render(strings.Repeat("─", lineWidth))
 
 	qStr := func(v resource.Quantity) string {
 		if v.IsZero() {
@@ -287,43 +341,38 @@ func renderQuotaSection(q *kube.NamespaceQuota, t tableTotals, thresh threshold.
 		}
 		return fn(v)
 	}
-	usageStyle := func(used, quota int64) lipgloss.Style {
-		if quota == 0 {
-			return st.PlainCell
+
+	// Render "usage / allowed" where usage is threshold-colored and "/ allowed" is dimmed.
+	cell := func(used, quota int64, usageStr, quotaStr string) string {
+		var lvl threshold.Level
+		if quota > 0 {
+			lvl = thresh.Classify(float64(used) / float64(quota) * 100)
 		}
-		return levelStyle(st, thresh.Classify(float64(used)/float64(quota)*100))
+		content := levelStyle(st, lvl).Render(usageStr) + st.Dim.Render(" / "+quotaStr)
+		pad := max(0, qVal-lipgloss.Width(content))
+		return content + strings.Repeat(" ", pad)
 	}
 
-	row := func(cells ...string) string {
-		return strings.Join(cells, " ")
-	}
+	sep := st.Divider.Render("│")
+	join := func(cells ...string) string { return strings.Join(cells, " ") }
 
-	header := row(
+	header := join(
 		st.Header.Width(qLabel).Render("ResourceQuota"),
 		sep,
 		st.Header.Width(qVal).Render("CPU-REQ"),
 		st.Header.Width(qVal).Render("CPU-LIM"),
-		st.Header.Width(qVal).Render("MEM-REQ"),
-		st.Header.Width(qVal).Render("MEM-LIM"),
+		st.Header.Width(qVal).Render("MEMORY-REQ"),
+		st.Header.Width(qVal).Render("MEMORY-LIM"),
 	)
-	allowed := row(
-		st.PlainCell.Width(qLabel).Render("allowed"),
+	data := join(
+		st.Dim.Width(qLabel).Render("usage / allowed"),
 		sep,
-		st.PlainCell.Width(qVal).Render(qStr(q.CPURequest)),
-		st.PlainCell.Width(qVal).Render(qStr(q.CPULimit)),
-		st.PlainCell.Width(qVal).Render(qStr(q.MemRequest)),
-		st.PlainCell.Width(qVal).Render(qStr(q.MemLimit)),
+		cell(t.cpuReqMilli, q.CPURequest.MilliValue(), fmtOrDash(t.cpuReqMilli, fmtMilliCPUAuto), qStr(q.CPURequest)),
+		cell(t.cpuLimMilli, q.CPULimit.MilliValue(), fmtOrDash(t.cpuLimMilli, fmtMilliCPUAuto), qStr(q.CPULimit)),
+		cell(t.memReqBytes, q.MemRequest.Value(), fmtOrDash(t.memReqBytes, fmtBytes), qStr(q.MemRequest)),
+		cell(t.memLimBytes, q.MemLimit.Value(), fmtOrDash(t.memLimBytes, fmtBytes), qStr(q.MemLimit)),
 	)
-	usage := row(
-		st.PlainCell.Width(qLabel).Render("usage"),
-		sep,
-		usageStyle(t.cpuReqMilli, q.CPURequest.MilliValue()).Width(qVal).Render(fmtOrDash(t.cpuReqMilli, fmtMilliCPUAuto)),
-		usageStyle(t.cpuLimMilli, q.CPULimit.MilliValue()).Width(qVal).Render(fmtOrDash(t.cpuLimMilli, fmtMilliCPUAuto)),
-		usageStyle(t.memReqBytes, q.MemRequest.Value()).Width(qVal).Render(fmtOrDash(t.memReqBytes, fmtBytes)),
-		usageStyle(t.memLimBytes, q.MemLimit.Value()).Width(qVal).Render(fmtOrDash(t.memLimBytes, fmtBytes)),
-	)
-
-	return header + "\n" + hrule + "\n" + allowed + "\n" + usage + "\n"
+	return header + "\n" + data + "\n"
 }
 
 func renderPodDivider(st Styles, lay layout) string {
@@ -336,9 +385,8 @@ func renderPodRows(
 	thresh threshold.Config,
 	st Styles,
 	lay layout,
-) (string, []warningEntry) {
+) string {
 	var sb strings.Builder
-	var warns []warningEntry
 
 	rowSt := st
 	if pod.Phase == "Succeeded" || pod.Phase == "Failed" {
@@ -385,15 +433,6 @@ func renderPodRows(
 			fmtBytes,
 		)
 
-		if cpuLvl >= threshold.LevelWarn {
-			warns = append(warns, warningEntry{pod.Name, c.Name,
-				fmt.Sprintf("CPU %s — %s", cpuPctStr, levelLabel(cpuLvl))})
-		}
-		if memLvl >= threshold.LevelWarn {
-			warns = append(warns, warningEntry{pod.Name, c.Name,
-				fmt.Sprintf("MEM %s — %s", memPctStr, levelLabel(memLvl))})
-		}
-
 		cStyle := rowSt.Container
 		pStyle := rowSt.PlainCell
 		if i == 0 {
@@ -434,7 +473,7 @@ func renderPodRows(
 		sb.WriteString("\n")
 	}
 
-	return sb.String(), warns
+	return sb.String()
 }
 
 // usageCells returns the formatted usage string, percentage string, and threshold level.

@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tadamo/podres/internal/kube"
 	"github.com/tadamo/podres/internal/threshold"
@@ -11,23 +13,31 @@ import (
 
 // Model is the Bubbletea application model for watch-mode display.
 type Model struct {
-	client    *kube.Client
-	namespace string
-	selector  string
-	cluster   string
-	user      string
-	thresh    threshold.Config
-	styles    Styles
-	interval     time.Duration
-	noWatch      bool
-	podDividers  bool
-	wide         bool
+	client      *kube.Client
+	namespace   string
+	selector    string
+	cluster     string
+	user        string
+	thresh      threshold.Config
+	styles      Styles
+	interval    time.Duration
+	noWatch     bool
+	podDividers bool
+	wide        bool
 
 	// current display state
 	pods    []kube.PodSpec
 	metrics map[string]kube.PodMetrics
 	quota   *kube.NamespaceQuota
 	err     error
+
+	// viewport for the scrollable table body (watch mode only)
+	viewport      viewport.Model
+	ready         bool
+	termWidth     int
+	termHeight    int
+	headerContent string
+	footerContent string
 }
 
 // fetchResult carries the outcome of one refresh cycle.
@@ -76,9 +86,26 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
+	case tea.WindowSizeMsg:
+		m.termWidth = msg.Width
+		m.termHeight = msg.Height
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width, msg.Height)
+			m.ready = true
+		}
+		if m.pods != nil {
+			m = m.rebuildViewport()
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+		if !m.noWatch && m.ready {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		}
 
 	case fetchResult:
@@ -90,7 +117,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.noWatch {
 			return m, tea.Quit
 		}
-		// Schedule the next tick; the tick handler will trigger the fetch.
+		if m.ready && m.pods != nil {
+			m = m.rebuildViewport()
+		}
 		return m, tea.Tick(m.interval, func(time.Time) tea.Msg {
 			return tickMsg{}
 		})
@@ -110,7 +139,26 @@ func (m Model) View() string {
 	if m.pods == nil {
 		return "Loading…\n"
 	}
-	return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide)
+	if m.noWatch {
+		return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide)
+	}
+	if !m.ready {
+		return "Loading…\n"
+	}
+	return m.headerContent + m.viewport.View() + m.footerContent
+}
+
+// rebuildViewport recomputes header/footer content and resizes the viewport to
+// fill the remaining terminal height between them.
+func (m Model) rebuildViewport() Model {
+	m.headerContent = RenderFixedHeader(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.wide)
+	m.footerContent = RenderFixedFooter(m.pods, m.metrics, m.thresh, m.styles)
+	headerLines := strings.Count(m.headerContent, "\n")
+	footerLines := strings.Count(m.footerContent, "\n")
+	m.viewport.Width = m.termWidth
+	m.viewport.Height = max(1, m.termHeight-headerLines-footerLines)
+	m.viewport.SetContent(RenderBody(m.pods, m.metrics, m.thresh, m.styles, m.podDividers, m.wide))
+	return m
 }
 
 // fetchCmd returns a tea.Cmd that fetches pods, metrics, and quota in the background.
