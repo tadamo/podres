@@ -14,7 +14,6 @@ type Styles struct {
 	PodName     lipgloss.Style
 	PodRestart  lipgloss.Style // pod name with non-zero restarts
 	Container   lipgloss.Style
-	Sidecar     lipgloss.Style // dimmed for istio-proxy / envoy / linkerd-proxy
 	PlainCell   lipgloss.Style
 	Divider     lipgloss.Style
 
@@ -30,7 +29,7 @@ func DefaultStyles(noColor bool) Styles {
 		return Styles{
 			OK: lipgloss.NewStyle(), Warn: lipgloss.NewStyle(), Crit: lipgloss.NewStyle(),
 			Header: lipgloss.NewStyle(), PodName: lipgloss.NewStyle(), PodRestart: lipgloss.NewStyle(),
-			Container: lipgloss.NewStyle(), Sidecar: lipgloss.NewStyle(), PlainCell: lipgloss.NewStyle(),
+			Container: lipgloss.NewStyle(), PlainCell: lipgloss.NewStyle(),
 			Divider: lipgloss.NewStyle(),
 			StatusLine: lipgloss.NewStyle(),
 			Dim:        lipgloss.NewStyle(),
@@ -46,7 +45,6 @@ func DefaultStyles(noColor bool) Styles {
 		PodName:    lipgloss.NewStyle().Bold(true),
 		PodRestart: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3")), // bold yellow
 		Container:  lipgloss.NewStyle(),
-		Sidecar:    lipgloss.NewStyle().Faint(true),
 		PlainCell:  lipgloss.NewStyle(),
 		Divider:    lipgloss.NewStyle().Foreground(lipgloss.Color("8")), // dark gray
 

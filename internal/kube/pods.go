@@ -46,6 +46,19 @@ func (c *Client) ListPods(namespace, selector string) ([]PodSpec, error) {
 	return specs, nil
 }
 
+func containerStateStr(s corev1.ContainerState) string {
+	switch {
+	case s.Running != nil:
+		return "Running"
+	case s.Waiting != nil:
+		return "Waiting"
+	case s.Terminated != nil:
+		return "Terminated"
+	default:
+		return "Unknown"
+	}
+}
+
 func podToSpec(pod corev1.Pod) PodSpec {
 	var restarts int32
 	type containerInfo struct {
@@ -53,39 +66,49 @@ func podToSpec(pod corev1.Pod) PodSpec {
 		ready    bool
 		restarts int32
 	}
-	infoMap := make(map[string]containerInfo, len(pod.Status.ContainerStatuses))
+
+	infoMap := make(map[string]containerInfo)
 	for _, cs := range pod.Status.ContainerStatuses {
 		restarts += cs.RestartCount
-		var state string
-		switch {
-		case cs.State.Running != nil:
-			state = "Running"
-		case cs.State.Waiting != nil:
-			state = "Waiting"
-		case cs.State.Terminated != nil:
-			state = "Terminated"
-		default:
-			state = "Unknown"
+		infoMap[cs.Name] = containerInfo{containerStateStr(cs.State), cs.Ready, cs.RestartCount}
+	}
+	// Native sidecar init containers (restartPolicy: Always, k8s 1.29+) have their
+	// own status slice; include them so sidecars like istio-proxy are not invisible.
+	for _, cs := range pod.Status.InitContainerStatuses {
+		if _, already := infoMap[cs.Name]; already {
+			continue
 		}
-		infoMap[cs.Name] = containerInfo{state: state, ready: cs.Ready, restarts: cs.RestartCount}
+		restarts += cs.RestartCount
+		infoMap[cs.Name] = containerInfo{containerStateStr(cs.State), cs.Ready, cs.RestartCount}
 	}
 
-	containers := make([]ContainerSpec, 0, len(pod.Spec.Containers))
-	for _, c := range pod.Spec.Containers {
+	appendContainer := func(containers []ContainerSpec, c corev1.Container) []ContainerSpec {
 		info := infoMap[c.Name]
 		if info.state == "" {
 			info.state = "Unknown"
 		}
-		containers = append(containers, ContainerSpec{
-			Name:     c.Name,
-			Status:   info.state,
-			Ready:    info.ready,
-			Restarts: info.restarts,
+		return append(containers, ContainerSpec{
+			Name:       c.Name,
+			Status:     info.state,
+			Ready:      info.ready,
+			Restarts:   info.restarts,
 			CPURequest: quantityOrZero(c.Resources.Requests, corev1.ResourceCPU),
 			CPULimit:   quantityOrZero(c.Resources.Limits, corev1.ResourceCPU),
 			MemRequest: quantityOrZero(c.Resources.Requests, corev1.ResourceMemory),
 			MemLimit:   quantityOrZero(c.Resources.Limits, corev1.ResourceMemory),
 		})
+	}
+
+	// Native sidecar init containers run alongside regular containers; show them first.
+	containers := make([]ContainerSpec, 0, len(pod.Spec.Containers)+len(pod.Spec.InitContainers))
+	for _, c := range pod.Spec.InitContainers {
+		if c.RestartPolicy == nil || *c.RestartPolicy != corev1.ContainerRestartPolicyAlways {
+			continue
+		}
+		containers = appendContainer(containers, c)
+	}
+	for _, c := range pod.Spec.Containers {
+		containers = appendContainer(containers, c)
 	}
 
 	phase := string(pod.Status.Phase)

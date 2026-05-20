@@ -317,7 +317,7 @@ func renderPodRows(
 	var warns []warningEntry
 
 	rowSt := st
-	if pod.Phase != "Running" {
+	if pod.Phase == "Succeeded" || pod.Phase == "Failed" {
 		rowSt = dimStyles(st)
 	}
 
@@ -371,9 +371,6 @@ func renderPodRows(
 		}
 
 		cStyle := rowSt.Container
-		if isSidecar(c.Name) {
-			cStyle = rowSt.Sidecar
-		}
 		pStyle := rowSt.PlainCell
 		if i == 0 {
 			pStyle = podStyle
@@ -464,7 +461,6 @@ func dimStyles(st Styles) Styles {
 		PodName:    d(st.PodName),
 		PodRestart: d(st.PodRestart),
 		Container:  d(st.Container),
-		Sidecar:    d(st.Sidecar),
 		PlainCell:  d(st.PlainCell),
 		Divider:    d(st.Divider),
 		StatusLine: d(st.StatusLine),
@@ -488,12 +484,6 @@ func levelLabel(lvl threshold.Level) string {
 		return "exceeding threshold"
 	}
 	return "approaching threshold"
-}
-
-func isSidecar(name string) bool {
-	return strings.Contains(name, "istio-proxy") ||
-		strings.Contains(name, "envoy") ||
-		strings.Contains(name, "linkerd-proxy")
 }
 
 func truncate(s string, max int) string {
