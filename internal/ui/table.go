@@ -106,6 +106,7 @@ func Render(
 	sb.WriteString("\n\n")
 	sb.WriteString(renderHeaderRow(st, lay))
 	sb.WriteString("\n")
+	sb.WriteString(renderThickDivider(st, lay))
 
 	totals := computeTotals(pods, metrics)
 
@@ -224,7 +225,7 @@ func computeTotals(pods []kube.PodSpec, metrics map[string]kube.PodMetrics) tabl
 }
 
 func renderThickDivider(st Styles, lay layout) string {
-	return st.Header.Render(strings.Repeat("═", lay.totalWidth())) + "\n"
+	return st.Divider.Render(strings.Repeat("─", lay.totalWidth())) + "\n"
 }
 
 func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
