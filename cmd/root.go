@@ -14,17 +14,18 @@ import (
 
 // Options holds all CLI flag values.
 type Options struct {
-	Namespace      string
-	Selector       string
-	Interval       time.Duration
-	NoWatch        bool
-	Kubeconfig     string
-	Context        string
-	ThresholdWarn  int
-	ThresholdCrit  int
-	NoColor        bool
-	PodDividers    bool
-	Wide           bool
+	Namespace     string
+	Selector      string
+	Interval      time.Duration
+	NoWatch       bool
+	Kubeconfig    string
+	Context       string
+	ThresholdWarn int
+	ThresholdCrit int
+	NoColor       bool
+	PodDividers   bool
+	Wide          bool
+	Sort          string
 }
 
 var rootCmd = &cobra.Command{
@@ -61,6 +62,7 @@ func init() {
 	f.Bool("no-color", false, "disable colorized output")
 	f.Bool("pod-dividers", false, "draw a horizontal rule between each pod")
 	f.BoolP("wide", "w", false, "show full pod and container names without truncation")
+	f.String("sort", "", "initial sort column: cpu, mem, restarts, name")
 }
 
 func optionsFromFlags(cmd *cobra.Command) (Options, error) {
@@ -76,6 +78,7 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 	noColor, _ := f.GetBool("no-color")
 	podDividers, _ := f.GetBool("pod-dividers")
 	wide, _ := f.GetBool("wide")
+	sort, _ := f.GetString("sort")
 
 	if warnPct >= critPct {
 		return Options{}, fmt.Errorf("--threshold-warn (%d) must be less than --threshold-crit (%d)", warnPct, critPct)
@@ -90,9 +93,10 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 		Context:       context,
 		ThresholdWarn: warnPct,
 		ThresholdCrit: critPct,
-		NoColor:       noColor,
-		PodDividers:   podDividers,
-		Wide:          wide,
+		NoColor:     noColor,
+		PodDividers: podDividers,
+		Wide:        wide,
+		Sort:        sort,
 	}, nil
 }
 
@@ -120,7 +124,7 @@ func runPodres(opts Options) error {
 		Crit: opts.ThresholdCrit,
 	}
 	styles := ui.DefaultStyles(opts.NoColor)
-	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch, opts.PodDividers, opts.Wide)
+	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch, opts.PodDividers, opts.Wide, ui.ParseSortKey(opts.Sort))
 
 	var progOpts []tea.ProgramOption
 	if !opts.NoWatch {

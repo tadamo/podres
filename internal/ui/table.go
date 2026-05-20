@@ -84,7 +84,7 @@ type warningEntry struct {
 }
 
 // RenderFixedHeader returns the pinned top portion: status line, ResourceQuota
-// section (or a placeholder message), blank line, column headers, and divider.
+// section (or a placeholder message), sort hint, column headers, and divider.
 // Its line count is variable — use strings.Count(result, "\n") to measure it.
 func RenderFixedHeader(
 	namespace, cluster, user, selector string,
@@ -94,6 +94,8 @@ func RenderFixedHeader(
 	thresh threshold.Config,
 	st Styles,
 	wide bool,
+	sortKey SortKey,
+	sortDesc bool,
 ) string {
 	lay := newLayout(pods, wide)
 	var sb strings.Builder
@@ -109,7 +111,7 @@ func RenderFixedHeader(
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
-	sb.WriteString(renderHeaderRow(st, lay))
+	sb.WriteString(renderHeaderRow(st, lay, sortKey, sortDesc))
 	sb.WriteString("\n")
 	sb.WriteString(renderThickDivider(st, lay))
 	return sb.String()
@@ -179,20 +181,21 @@ func computeWarnings(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, th
 	return warns
 }
 
-// RenderFixedFooter returns the pinned bottom portion: warnings, or empty string
-// when there are none.
-func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles) string {
+// RenderFixedFooter returns the pinned bottom portion: warnings (if any) and the sort hint.
+func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
 	warns := computeWarnings(pods, metrics, thresh)
-	if len(warns) == 0 {
-		return ""
-	}
+	lay := newLayout(pods, wide)
 	var sb strings.Builder
-	sb.WriteString("\n")
-	sb.WriteString(st.Warn.Render("⚠  Warnings:"))
-	sb.WriteString("\n")
-	for _, w := range warns {
-		fmt.Fprintf(&sb, "   %s (%s): %s\n", st.Warn.Render(w.container), w.pod, w.msg)
+	if len(warns) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(st.Warn.Render("⚠  Warnings:"))
+		sb.WriteString("\n")
+		for _, w := range warns {
+			fmt.Fprintf(&sb, "   %s (%s): %s\n", st.Warn.Render(w.container), w.pod, w.msg)
+		}
 	}
+	sb.WriteString(renderSortHint(sortKey, sortDesc, st, lay))
+	sb.WriteString("\n")
 	return sb.String()
 }
 
@@ -206,10 +209,39 @@ func Render(
 	st Styles,
 	podDividers bool,
 	wide bool,
+	sortKey SortKey,
+	sortDesc bool,
 ) string {
-	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide) +
+	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, sortKey, sortDesc) +
 		RenderBody(pods, metrics, thresh, st, podDividers, wide) +
-		RenderFixedFooter(pods, metrics, thresh, st)
+		RenderFixedFooter(pods, metrics, thresh, st, wide, sortKey, sortDesc)
+}
+
+// renderSortHint returns a right-aligned dim line with the arrow embedded in the active key.
+func renderSortHint(key SortKey, desc bool, st Styles, lay layout) string {
+	arrow := "↓"
+	if !desc {
+		arrow = "↑"
+	}
+	mark := func(k SortKey, label string) string {
+		if key == k {
+			return arrow + label
+		}
+		return label
+	}
+	keys := fmt.Sprintf("c=%s · m=%s · r=%s · n=%s",
+		mark(SortCPU, "cpu"),
+		mark(SortMem, "mem"),
+		mark(SortRestarts, "restarts"),
+		mark(SortName, "name"),
+	)
+	if key != SortNone {
+		keys += " · 0=off"
+	}
+	line := "Sort by: " + keys
+	rendered := st.Dim.Render(line)
+	pad := max(0, lay.totalWidth()-lipgloss.Width(rendered))
+	return strings.Repeat(" ", pad) + rendered
 }
 
 func renderStatusLine(namespace, cluster, user string, st Styles, lay layout) string {
@@ -228,15 +260,40 @@ func renderStatusLine(namespace, cluster, user string, st Styles, lay layout) st
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func renderHeaderRow(st Styles, lay layout) string {
+// sortHeaderCol returns the columnHeaders index that corresponds to the given sort key.
+func sortHeaderCol(key SortKey) int {
+	switch key {
+	case SortName:
+		return 0 // POD
+	case SortRestarts:
+		return 6 // RESTARTS
+	case SortCPU:
+		return 10 // CPU%
+	case SortMem:
+		return 14 // MEM%
+	default:
+		return -1
+	}
+}
+
+func renderHeaderRow(st Styles, lay layout, sortKey SortKey, sortDesc bool) string {
 	widths := lay.colWidths()
 	cells := make([]string, len(columnHeaders))
+	activeCol := sortHeaderCol(sortKey)
+	arrow := "↓"
+	if !sortDesc {
+		arrow = "↑"
+	}
 	for i, h := range columnHeaders {
 		style := st.Header
 		if h == "│" {
 			style = st.Divider
 		}
-		cells[i] = style.Width(widths[i]).Render(h)
+		label := h
+		if i == activeCol {
+			label = h + arrow
+		}
+		cells[i] = style.Width(widths[i]).Render(label)
 	}
 	return strings.Join(cells, " ")
 }

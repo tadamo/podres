@@ -25,6 +25,10 @@ type Model struct {
 	podDividers bool
 	wide        bool
 
+	// sort state
+	sortKey  SortKey
+	sortDesc bool
+
 	// current display state
 	pods    []kube.PodSpec
 	metrics map[string]kube.PodMetrics
@@ -61,7 +65,10 @@ func New(
 	noWatch bool,
 	podDividers bool,
 	wide bool,
+	initialSort SortKey,
 ) Model {
+	// CPU/mem/restarts default to descending (highest first); name defaults to ascending.
+	desc := initialSort == SortCPU || initialSort == SortMem || initialSort == SortRestarts
 	return Model{
 		client:      client,
 		namespace:   namespace,
@@ -74,6 +81,8 @@ func New(
 		noWatch:     noWatch,
 		podDividers: podDividers,
 		wide:        wide,
+		sortKey:     initialSort,
+		sortDesc:    desc,
 	}
 }
 
@@ -99,8 +108,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "q" || msg.String() == "ctrl+c" {
+		switch msg.String() {
+		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "c":
+			m = m.cycleSort(SortCPU)
+			if m.ready && m.pods != nil {
+				m = m.rebuildViewport()
+			}
+			return m, nil
+		case "m":
+			m = m.cycleSort(SortMem)
+			if m.ready && m.pods != nil {
+				m = m.rebuildViewport()
+			}
+			return m, nil
+		case "r":
+			m = m.cycleSort(SortRestarts)
+			if m.ready && m.pods != nil {
+				m = m.rebuildViewport()
+			}
+			return m, nil
+		case "n":
+			m = m.cycleSort(SortName)
+			if m.ready && m.pods != nil {
+				m = m.rebuildViewport()
+			}
+			return m, nil
+		case "0":
+			m.sortKey = SortNone
+			m.sortDesc = false
+			if m.ready && m.pods != nil {
+				m = m.rebuildViewport()
+			}
+			return m, nil
 		}
 		if !m.noWatch && m.ready {
 			var cmd tea.Cmd
@@ -140,7 +181,8 @@ func (m Model) View() string {
 		return "Loading…\n"
 	}
 	if m.noWatch {
-		return Render(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide)
+		sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
+		return Render(m.namespace, m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide, m.sortKey, m.sortDesc)
 	}
 	if !m.ready {
 		return "Loading…\n"
@@ -148,16 +190,28 @@ func (m Model) View() string {
 	return m.headerContent + m.viewport.View() + m.footerContent
 }
 
+// cycleSort toggles direction if key matches current sort, or sets a new sort key (descending).
+func (m Model) cycleSort(key SortKey) Model {
+	if m.sortKey == key {
+		m.sortDesc = !m.sortDesc
+	} else {
+		m.sortKey = key
+		m.sortDesc = true
+	}
+	return m
+}
+
 // rebuildViewport recomputes header/footer content and resizes the viewport to
 // fill the remaining terminal height between them.
 func (m Model) rebuildViewport() Model {
-	m.headerContent = RenderFixedHeader(m.namespace, m.cluster, m.user, m.selector, m.pods, m.metrics, m.quota, m.thresh, m.styles, m.wide)
-	m.footerContent = RenderFixedFooter(m.pods, m.metrics, m.thresh, m.styles)
+	sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
+	m.headerContent = RenderFixedHeader(m.namespace, m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
+	m.footerContent = RenderFixedFooter(sorted, m.metrics, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
 	headerLines := strings.Count(m.headerContent, "\n")
 	footerLines := strings.Count(m.footerContent, "\n")
 	m.viewport.Width = m.termWidth
 	m.viewport.Height = max(1, m.termHeight-headerLines-footerLines)
-	m.viewport.SetContent(RenderBody(m.pods, m.metrics, m.thresh, m.styles, m.podDividers, m.wide))
+	m.viewport.SetContent(RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide))
 	return m
 }
 
