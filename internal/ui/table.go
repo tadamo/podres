@@ -107,13 +107,31 @@ func Render(
 	return sb.String()
 }
 
+func tableWidth() int {
+	w := len(columnWidths) - 1 // spaces between cells
+	for _, cw := range columnWidths {
+		w += cw
+	}
+	return w
+}
+
 func renderStatusLine(namespace, cluster, user string, st Styles) string {
 	now := time.Now()
 	tz, _ := now.Zone()
-	return st.StatusLine.Render(fmt.Sprintf(
-		"⎈  NAMESPACE: %s     ⬡  CLUSTER: %s     ◉  USER: %s          Refreshed: %s   TZ: %s",
-		namespace, cluster, user, now.Format("01/02/2006 3:04:05 PM"), tz,
+
+	left := st.StatusLine.Render(fmt.Sprintf(
+		"⎈  NAMESPACE: %s     ⬡  CLUSTER: %s     ◉  USER: %s",
+		namespace, cluster, user,
 	))
+	right := st.Dim.Render(fmt.Sprintf("Refreshed: %s   TZ: %s",
+		now.Format("01/02/2006 3:04:05 PM"), tz,
+	))
+
+	gap := tableWidth() - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 func renderHeaderRow(st Styles) string {
@@ -170,11 +188,7 @@ func computeTotals(pods []kube.PodSpec, metrics map[string]kube.PodMetrics) tabl
 }
 
 func renderThickDivider(st Styles) string {
-	total := len(columnWidths) - 1
-	for _, w := range columnWidths {
-		total += w
-	}
-	return st.Header.Render(strings.Repeat("═", total)) + "\n"
+	return st.Header.Render(strings.Repeat("═", tableWidth())) + "\n"
 }
 
 func renderTotalsRow(t tableTotals, st Styles) string {
@@ -253,11 +267,7 @@ func renderQuotaRow(q *kube.NamespaceQuota, t tableTotals, thresh threshold.Conf
 }
 
 func renderPodDivider(st Styles) string {
-	total := len(columnWidths) - 1 // spaces between cells
-	for _, w := range columnWidths {
-		total += w
-	}
-	return st.Divider.Render(strings.Repeat("─", total)) + "\n"
+	return st.Divider.Render(strings.Repeat("─", tableWidth())) + "\n"
 }
 
 func renderPodRows(
