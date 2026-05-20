@@ -19,7 +19,7 @@ spec:
           os: linux
           arch: amd64
       uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_linux_amd64.tar.gz
-      sha256: "PLACEHOLDER_linux_amd64"
+      sha256: "4f29faf71781fb9f682666e6566b506ed4f0c89604ee96cf91343bf72fb2198b"
       bin: kubectl-podres
 
     - selector:
@@ -27,7 +27,7 @@ spec:
           os: linux
           arch: arm64
       uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_linux_arm64.tar.gz
-      sha256: "PLACEHOLDER_linux_arm64"
+      sha256: "8287c86c9e43090a01dd9b80fc474bf6922d76e56fb0736a365aa0a57115350b"
       bin: kubectl-podres
 
     - selector:
@@ -35,7 +35,7 @@ spec:
           os: darwin
           arch: amd64
       uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_darwin_amd64.tar.gz
-      sha256: "PLACEHOLDER_darwin_amd64"
+      sha256: "afb951cabaf301b48deed48049d1b23cb5661e41dc99bf9f51985670f77d9c61"
       bin: kubectl-podres
 
     - selector:
@@ -43,7 +43,7 @@ spec:
           os: darwin
           arch: arm64
       uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_darwin_arm64.tar.gz
-      sha256: "PLACEHOLDER_darwin_arm64"
+      sha256: "520a47deed5796f533efefaa06b72275180e1de55e5d782ddebe96c900960da9"
       bin: kubectl-podres
 
     - selector:
@@ -51,5 +51,5 @@ spec:
           os: windows
           arch: amd64
       uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_windows_amd64.zip
-      sha256: "PLACEHOLDER_windows_amd64"
+      sha256: "57be46ae36be6466d8def81469f851e62b6d674f7376ff0f59f687deb5332ec8"
       bin: kubectl-podres.exe
