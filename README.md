@@ -1,6 +1,6 @@
 # podres
 
-A `kubectl` plugin that shows a real-time, colorized view of Kubernetes pod and container resource requests, limits, and live utilization in a single compact table.
+A `kubectl` plugin that shows a real-time, colorized view of Kubernetes pod and container resource requests, limits, and live utilization in a single compact table. Works with any Kubernetes or OpenShift cluster.
 
 ```
  NAMESPACE: my-namespace   CLUSTER: prod-eks-cluster   USER: jane   Refreshed: 05/20/2026 2:19:10 PM   TZ: America/New_York
@@ -32,13 +32,15 @@ A `kubectl` plugin that shows a real-time, colorized view of Kubernetes pod and 
 
 ## Prerequisites
 
-- A running Kubernetes cluster
+- A running Kubernetes or OpenShift cluster
 - [metrics-server](https://github.com/kubernetes-sigs/metrics-server) installed in the cluster (for live CPU/memory usage)
 - `kubectl` configured with a valid kubeconfig
 
 ## Installation
 
 ### kubectl krew (recommended)
+
+Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/) if you don't have it, then:
 
 ```bash
 kubectl krew install podres
