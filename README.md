@@ -38,7 +38,19 @@ A `kubectl` plugin that shows a real-time, colorized view of Kubernetes pod and 
 
 ## Installation
 
-### kubectl krew (recommended)
+### One-line install (Linux and macOS)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/tadamo/podres/main/install.sh | bash
+```
+
+To pin a specific version:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/tadamo/podres/main/install.sh | VERSION=v1.0.1 bash
+```
+
+### kubectl krew
 
 Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/) if you don't have it, then:
 
@@ -49,16 +61,6 @@ kubectl krew install podres
 ### Direct download
 
 Download the binary for your platform from the [releases page](https://github.com/tadamo/podres/releases), rename it to `kubectl-podres`, and place it somewhere on your `PATH`.
-
-```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/tadamo/podres/releases/latest/download/kubectl-podres_darwin_arm64.tar.gz | tar xz
-sudo mv kubectl-podres /usr/local/bin/kubectl-podres
-
-# Linux (amd64)
-curl -L https://github.com/tadamo/podres/releases/latest/download/kubectl-podres_linux_amd64.tar.gz | tar xz
-sudo mv kubectl-podres /usr/local/bin/kubectl-podres
-```
 
 ### Build from source
 
