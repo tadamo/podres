@@ -237,7 +237,7 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 
 	cpuUseStr := "N/A"
 	if t.cpuUseAvail {
-		cpuUseStr = fmtOrDash(t.cpuUseMilli, fmtMilliCPU)
+		cpuUseStr = fmtOrDash(t.cpuUseMilli, fmtMilliCPUAuto)
 	}
 	memUseStr := "N/A"
 	if t.memUseAvail {
@@ -252,8 +252,8 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 		st.PlainCell.Width(colStatus).Render(""),
 		st.PlainCell.Width(colReady).Render(""),
 		st.PlainCell.Width(colRestarts).Render(""),
-		st.Header.Width(colVal).Render(fmtOrDash(t.cpuReqMilli, fmtMilliCPU)),
-		st.Header.Width(colVal).Render(fmtOrDash(t.cpuLimMilli, fmtMilliCPU)),
+		st.Header.Width(colVal).Render(fmtOrDash(t.cpuReqMilli, fmtMilliCPUAuto)),
+		st.Header.Width(colVal).Render(fmtOrDash(t.cpuLimMilli, fmtMilliCPUAuto)),
 		st.Header.Width(colVal).Render(cpuUseStr),
 		st.PlainCell.Width(colPct).Render("—"),
 		st.Header.Width(colVal).Render(fmtOrDash(t.memReqBytes, fmtBytes)),
@@ -488,6 +488,19 @@ func quantityStr(q resource.Quantity) string {
 
 func fmtMilliCPU(m int64) string {
 	return fmt.Sprintf("%dm", m)
+}
+
+// fmtMilliCPUAuto shows millicores for values under 1 core, otherwise converts
+// to cores with up to one decimal place (e.g. 15500m → "15.5", 2000m → "2").
+func fmtMilliCPUAuto(m int64) string {
+	if m < 1000 {
+		return fmt.Sprintf("%dm", m)
+	}
+	cores := float64(m) / 1000
+	if cores == float64(int64(cores)) {
+		return fmt.Sprintf("%.0f", cores)
+	}
+	return fmt.Sprintf("%.1f", cores)
 }
 
 func podPhaseCell(phase string, st Styles) (string, lipgloss.Style) {
