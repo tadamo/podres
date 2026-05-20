@@ -42,6 +42,11 @@ resource requests, limits, and live utilization in a single compact table.`,
 	},
 }
 
+// SetVersion wires the build-time version string into the root command.
+func SetVersion(v string) {
+	rootCmd.Version = v
+}
+
 // Execute is the entry point called from main.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {

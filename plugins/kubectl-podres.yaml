@@ -1,0 +1,55 @@
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: podres
+spec:
+  version: "v1.0.0"
+  homepage: https://github.com/tadamo/podres
+  shortDescription: "Watch pod resource requests, limits, and live utilization"
+  description: |
+    podres displays a real-time, colorized view of Kubernetes pod and container
+    resource requests, limits, and live utilization in a single compact table.
+
+    Requires metrics-server to be installed in the cluster for live CPU/memory
+    usage data. Falls back gracefully (showing N/A) when metrics-server is
+    unavailable.
+  platforms:
+    - selector:
+        matchLabels:
+          os: linux
+          arch: amd64
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_linux_amd64.tar.gz
+      sha256: "PLACEHOLDER_linux_amd64"
+      bin: kubectl-podres
+
+    - selector:
+        matchLabels:
+          os: linux
+          arch: arm64
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_linux_arm64.tar.gz
+      sha256: "PLACEHOLDER_linux_arm64"
+      bin: kubectl-podres
+
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_darwin_amd64.tar.gz
+      sha256: "PLACEHOLDER_darwin_amd64"
+      bin: kubectl-podres
+
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: arm64
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_darwin_arm64.tar.gz
+      sha256: "PLACEHOLDER_darwin_arm64"
+      bin: kubectl-podres
+
+    - selector:
+        matchLabels:
+          os: windows
+          arch: amd64
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.0/kubectl-podres_windows_amd64.zip
+      sha256: "PLACEHOLDER_windows_amd64"
+      bin: kubectl-podres.exe

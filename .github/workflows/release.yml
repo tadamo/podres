@@ -31,20 +31,31 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
+      - name: Build and archive
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          BIN="kubectl-podres_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}"
+          BIN="kubectl-podres${{ matrix.ext }}"
+          BASE="kubectl-podres_${{ matrix.goos }}_${{ matrix.goarch }}"
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o "$BIN" ./main.go
-          echo "BIN=$BIN" >> $GITHUB_ENV
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "${BASE}.zip" "$BIN"
+            ARCHIVE="${BASE}.zip"
+          else
+            tar czf "${BASE}.tar.gz" "$BIN"
+            ARCHIVE="${BASE}.tar.gz"
+          fi
+          sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BIN }}
-          path: ${{ env.BIN }}
+          name: ${{ env.ARCHIVE }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
 
   publish:
     needs: release
