@@ -79,6 +79,15 @@ go build -o kubectl-podres ./main.go
 sudo mv kubectl-podres /usr/local/bin/kubectl-podres
 ```
 
+### Plugin discovery
+
+All installation methods place the binary at `kubectl-podres` somewhere on your `$PATH`. Both `kubectl` and `oc` automatically discover any executable named `kubectl-<something>` on the path — no registration needed. You can verify the plugin is found with:
+
+```bash
+kubectl podres --version
+oc podres --version
+```
+
 ## Usage
 
 ```bash
