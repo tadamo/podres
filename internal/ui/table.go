@@ -117,7 +117,7 @@ func RenderFixedHeader(
 	return sb.String()
 }
 
-// RenderBody returns the scrollable portion: pod rows and the TOTAL line.
+// RenderBody returns the scrollable pod rows only (no divider or TOTAL line).
 func RenderBody(
 	pods []kube.PodSpec,
 	metrics map[string]kube.PodMetrics,
@@ -128,7 +128,6 @@ func RenderBody(
 ) string {
 	lay := newLayout(pods, wide)
 	var sb strings.Builder
-	totals := computeTotals(pods, metrics)
 	for _, pod := range pods {
 		if podDividers {
 			sb.WriteString(renderPodDivider(st, lay))
@@ -141,10 +140,14 @@ func RenderBody(
 		}
 		sb.WriteString(renderPodRows(pod, pm, thresh, st, lay))
 	}
-	sb.WriteString(renderThickDivider(st, lay))
-	sb.WriteString(renderTotalsRow(totals, st, lay))
-	sb.WriteString("\n")
 	return sb.String()
+}
+
+// RenderTotalArea returns the thick divider and TOTAL row as two pinned lines.
+func RenderTotalArea(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, st Styles, wide bool) string {
+	lay := newLayout(pods, wide)
+	totals := computeTotals(pods, metrics)
+	return renderThickDivider(st, lay) + renderTotalsRow(totals, st, lay) + "\n"
 }
 
 // computeWarnings returns threshold violation entries for all containers.
@@ -181,12 +184,11 @@ func computeWarnings(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, th
 	return warns
 }
 
-// RenderFixedFooter returns the pinned bottom portion: warnings (if any) and the sort hint.
-func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
+// renderWatchFooterBody returns warnings (if any) and the sort hint, with no leading blank line.
+func renderWatchFooterBody(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
 	warns := computeWarnings(pods, metrics, thresh)
 	lay := newLayout(pods, wide)
 	var sb strings.Builder
-	sb.WriteString("\n")
 	if len(warns) > 0 {
 		sb.WriteString(st.Warn.Render("⚠  Warnings:"))
 		sb.WriteString("\n")
@@ -199,7 +201,12 @@ func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, 
 	return sb.String()
 }
 
-// Render returns the complete output for --no-watch mode (header + body + footer).
+// RenderFixedFooter returns the pinned bottom portion for no-watch mode.
+func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
+	return "\n" + renderWatchFooterBody(pods, metrics, thresh, st, wide, sortKey, sortDesc)
+}
+
+// Render returns the complete output for --no-watch mode (header + body + total + footer).
 func Render(
 	namespace, cluster, user, selector string,
 	pods []kube.PodSpec,
@@ -214,6 +221,7 @@ func Render(
 ) string {
 	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, sortKey, sortDesc) +
 		RenderBody(pods, metrics, thresh, st, podDividers, wide) +
+		RenderTotalArea(pods, metrics, st, wide) +
 		RenderFixedFooter(pods, metrics, thresh, st, wide, sortKey, sortDesc)
 }
 

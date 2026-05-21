@@ -201,17 +201,34 @@ func (m Model) cycleSort(key SortKey) Model {
 	return m
 }
 
-// rebuildViewport recomputes header/footer content and resizes the viewport to
-// fill the remaining terminal height between them.
+// rebuildViewport recomputes header/footer content and sizes the viewport to the
+// actual pod rows, with the TOTAL area pinned just below and the footer floated
+// to the bottom of the terminal via variable padding.
 func (m Model) rebuildViewport() Model {
 	sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
 	m.headerContent = RenderFixedHeader(m.namespace, m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
-	m.footerContent = RenderFixedFooter(sorted, m.metrics, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
+
+	totalArea := RenderTotalArea(sorted, m.metrics, m.styles, m.wide)
+	footerBody := renderWatchFooterBody(sorted, m.metrics, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
+	podBody := RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide)
+
 	headerLines := strings.Count(m.headerContent, "\n")
-	footerLines := strings.Count(m.footerContent, "\n")
+	totalAreaLines := strings.Count(totalArea, "\n")
+	footerBodyLines := strings.Count(footerBody, "\n")
+	podBodyLines := strings.Count(podBody, "\n")
+
+	// The leading "\n" terminates the viewport's last rendered line (viewport.View()
+	// does not produce a trailing newline), so the thick divider starts on its own line.
+	// The -1 in maxVP/padding accounts for that extra newline in footerContent.
+	maxVP := max(1, m.termHeight-headerLines-1-totalAreaLines-footerBodyLines)
+	vpHeight := max(1, min(podBodyLines, maxVP))
+	padding := max(0, m.termHeight-headerLines-1-totalAreaLines-vpHeight-footerBodyLines)
+
 	m.viewport.Width = m.termWidth
-	m.viewport.Height = max(1, m.termHeight-headerLines-footerLines)
-	m.viewport.SetContent(RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide))
+	m.viewport.Height = vpHeight
+	m.viewport.SetContent(podBody)
+
+	m.footerContent = "\n" + totalArea + strings.Repeat("\n", padding) + footerBody
 	return m
 }
 
