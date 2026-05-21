@@ -1,8 +1,8 @@
 # podres
 
-A `kubectl` plugin that shows a real-time, colorized view of Kubernetes pod and container resource requests, limits, and live utilization in a single compact table. Works with any Kubernetes or OpenShift cluster.
+A `kubectl` (or `oc`) plugin that shows a real-time, colorized view of Kubernetes pod and container resource requests, limits, and live utilization in a single compact table. Works with any Kubernetes or OpenShift cluster.
 
-```
+```text
  NAMESPACE: my-namespace   CLUSTER: prod-eks-cluster   USER: jane   Refreshed: 05/20/2026 2:19:10 PM   TZ: America/New_York
 
  ResourceQuota
