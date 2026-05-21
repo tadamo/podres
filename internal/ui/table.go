@@ -185,7 +185,8 @@ func computeWarnings(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, th
 }
 
 // renderWatchFooterBody returns warnings (if any) and the sort hint, with no leading blank line.
-func renderWatchFooterBody(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
+// termWidth is the terminal width; the sort hint right-aligns to min(termWidth, lay.totalWidth()).
+func renderWatchFooterBody(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool, termWidth int) string {
 	warns := computeWarnings(pods, metrics, thresh)
 	lay := newLayout(pods, wide)
 	var sb strings.Builder
@@ -196,14 +197,15 @@ func renderWatchFooterBody(pods []kube.PodSpec, metrics map[string]kube.PodMetri
 			fmt.Fprintf(&sb, "   %s (%s): %s\n", st.Warn.Render(w.container), w.pod, w.msg)
 		}
 	}
-	sb.WriteString(renderSortHint(sortKey, sortDesc, st, lay))
+	sb.WriteString(renderSortHint(sortKey, sortDesc, st, min(termWidth, lay.totalWidth())))
 	sb.WriteString("\n")
 	return sb.String()
 }
 
 // RenderFixedFooter returns the pinned bottom portion for no-watch mode.
 func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
-	return "\n" + renderWatchFooterBody(pods, metrics, thresh, st, wide, sortKey, sortDesc)
+	lay := newLayout(pods, wide)
+	return "\n" + renderWatchFooterBody(pods, metrics, thresh, st, wide, sortKey, sortDesc, lay.totalWidth())
 }
 
 // Render returns the complete output for --no-watch mode (header + body + total + footer).
@@ -226,7 +228,8 @@ func Render(
 }
 
 // renderSortHint returns a right-aligned dim line with the arrow embedded in the active key.
-func renderSortHint(key SortKey, desc bool, st Styles, lay layout) string {
+// width is the column to right-align to (caller passes min(termWidth, lay.totalWidth())).
+func renderSortHint(key SortKey, desc bool, st Styles, width int) string {
 	arrow := "↓"
 	if !desc {
 		arrow = "↑"
@@ -248,7 +251,7 @@ func renderSortHint(key SortKey, desc bool, st Styles, lay layout) string {
 	}
 	line := "Sort by: " + keys
 	rendered := st.Dim.Render(line)
-	pad := max(0, lay.totalWidth()-lipgloss.Width(rendered))
+	pad := max(0, width-lipgloss.Width(rendered))
 	return strings.Repeat(" ", pad) + rendered
 }
 

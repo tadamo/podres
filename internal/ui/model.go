@@ -209,7 +209,7 @@ func (m Model) rebuildViewport() Model {
 	m.headerContent = RenderFixedHeader(m.namespace, m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
 
 	totalArea := RenderTotalArea(sorted, m.metrics, m.styles, m.wide)
-	footerBody := renderWatchFooterBody(sorted, m.metrics, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
+	footerBody := renderWatchFooterBody(sorted, m.metrics, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc, m.termWidth)
 	podBody := RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide)
 
 	headerLines := strings.Count(m.headerContent, "\n")
