@@ -50,12 +50,14 @@ To pin a specific version:
 curl -sSL https://raw.githubusercontent.com/tadamo/podres/main/install.sh | VERSION=v1.0.1 bash
 ```
 
-### kubectl krew
+### Clone and install
 
-Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/) if you don't have it, then:
+Clone the repo and run the install script directly (useful if you prefer to inspect before running):
 
 ```bash
-kubectl krew install podres
+git clone https://github.com/tadamo/podres.git
+cd podres
+./install.sh
 ```
 
 ### Direct download
