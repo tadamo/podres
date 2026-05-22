@@ -213,6 +213,70 @@ func Render(
 		RenderFixedFooter(pods, st, wide, allNamespaces, sortKey, sortDesc)
 }
 
+// renderNamespacePicker renders a compact namespace selector for the footer area.
+// filtered is the already-filtered namespace list; query is the current search string.
+// It shows up to maxPickerVisible items centered around the cursor, with scroll
+// indicators when the filtered list is longer.
+func renderNamespacePicker(filtered []string, cursor int, loading bool, query string, st Styles, width int) string {
+	const maxVisible = 10
+
+	// Title bar: "── Select a Namespace ──...──"
+	titleLeft := st.Divider.Render("── ")
+	titleText := st.Header.Render("Select a Namespace")
+	titleRight := st.Divider.Render(" " + strings.Repeat("─", max(0, width-lipgloss.Width(titleLeft)-lipgloss.Width(titleText)-1)))
+	titleLine := titleLeft + titleText + titleRight + "\n"
+
+	// Filter input on the left, controls hint on the right.
+	inputLeft := st.Header.Render("> ") + query + st.Dim.Render("|")
+	hint := st.Dim.Render("↑↓ navigate · Enter select · Esc cancel")
+	gap := max(1, width-lipgloss.Width(inputLeft)-lipgloss.Width(hint))
+	filterLine := inputLeft + strings.Repeat(" ", gap) + hint + "\n"
+
+	dividerLine := st.Divider.Render(strings.Repeat("─", width)) + "\n"
+	header := titleLine + filterLine + dividerLine
+
+	if loading {
+		return header + st.Dim.Render("  Loading namespaces…") + "\n"
+	}
+	if len(filtered) == 0 {
+		msg := "  No namespaces found"
+		if query != "" {
+			msg = "  No matching namespaces"
+		}
+		return header + st.Dim.Render(msg) + "\n"
+	}
+
+	// Center the visible window around the cursor.
+	start := cursor - maxVisible/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxVisible
+	if end > len(filtered) {
+		end = len(filtered)
+		if start = end - maxVisible; start < 0 {
+			start = 0
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	if start > 0 {
+		sb.WriteString(st.Dim.Render(fmt.Sprintf("  ↑ %d more", start)) + "\n")
+	}
+	for i := start; i < end; i++ {
+		if i == cursor {
+			sb.WriteString(st.Header.Render("▶ "+filtered[i]) + "\n")
+		} else {
+			sb.WriteString("  " + filtered[i] + "\n")
+		}
+	}
+	if remaining := len(filtered) - end; remaining > 0 {
+		sb.WriteString(st.Dim.Render(fmt.Sprintf("  ↓ %d more", remaining)) + "\n")
+	}
+	return sb.String()
+}
+
 // renderSortHint returns a right-aligned dim line with the arrow embedded in the active key.
 // width is the column to right-align to (caller passes min(termWidth, lay.totalWidth())).
 func renderSortHint(key SortKey, desc bool, st Styles, width int, allNamespaces bool) string {
@@ -238,6 +302,7 @@ func renderSortHint(key SortKey, desc bool, st Styles, width int, allNamespaces 
 	if key != SortNone {
 		keys += " · 0=off"
 	}
+	keys += " · f=ns"
 	line := "Sort by: " + keys
 	rendered := st.Dim.Render(line)
 	pad := max(0, width-lipgloss.Width(rendered))
