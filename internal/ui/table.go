@@ -235,15 +235,32 @@ func renderNamespacePicker(filtered []string, cursor int, loading bool, query st
 	dividerLine := st.Divider.Render(strings.Repeat("─", width)) + "\n"
 	header := titleLine + filterLine + dividerLine
 
+	// pad fills remaining list lines with blanks so the picker height is always
+	// maxVisible+2 lines (the maximum when both scroll indicators are present),
+	// keeping the title and input rows from shifting on screen.
+	const maxListLines = maxVisible + 2
+	pad := func(sb *strings.Builder, written int) {
+		for ; written < maxListLines; written++ {
+			sb.WriteString("\n")
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(header)
+
 	if loading {
-		return header + st.Dim.Render("  Loading namespaces…") + "\n"
+		sb.WriteString(st.Dim.Render("  Loading namespaces…") + "\n")
+		pad(&sb, 1)
+		return sb.String()
 	}
 	if len(filtered) == 0 {
 		msg := "  No namespaces found"
 		if query != "" {
 			msg = "  No matching namespaces"
 		}
-		return header + st.Dim.Render(msg) + "\n"
+		sb.WriteString(st.Dim.Render(msg) + "\n")
+		pad(&sb, 1)
+		return sb.String()
 	}
 
 	// Center the visible window around the cursor.
@@ -259,10 +276,10 @@ func renderNamespacePicker(filtered []string, cursor int, loading bool, query st
 		}
 	}
 
-	var sb strings.Builder
-	sb.WriteString(header)
+	written := 0
 	if start > 0 {
 		sb.WriteString(st.Dim.Render(fmt.Sprintf("  ↑ %d more", start)) + "\n")
+		written++
 	}
 	for i := start; i < end; i++ {
 		if i == cursor {
@@ -270,10 +287,13 @@ func renderNamespacePicker(filtered []string, cursor int, loading bool, query st
 		} else {
 			sb.WriteString("  " + filtered[i] + "\n")
 		}
+		written++
 	}
 	if remaining := len(filtered) - end; remaining > 0 {
 		sb.WriteString(st.Dim.Render(fmt.Sprintf("  ↓ %d more", remaining)) + "\n")
+		written++
 	}
+	pad(&sb, written)
 	return sb.String()
 }
 
