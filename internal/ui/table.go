@@ -213,8 +213,13 @@ func Render(
 		RenderFixedFooter(pods, st, wide, allNamespaces, sortKey, sortDesc)
 }
 
+// allNamespacesEntry is the sentinel label shown at the top of the picker when no
+// query is active. It cannot be a real Kubernetes namespace name (spaces are invalid).
+const allNamespacesEntry = "All Namespaces"
+
 // renderNamespacePicker renders a compact namespace selector for the footer area.
-// filtered is the already-filtered namespace list; query is the current search string.
+// display is the list to show (already filtered, with allNamespacesEntry prepended when
+// query is empty); query is the current search string.
 // It shows up to maxPickerVisible items centered around the cursor, with scroll
 // indicators when the filtered list is longer.
 func renderNamespacePicker(filtered []string, cursor int, loading bool, query string, st Styles, width int) string {
@@ -228,7 +233,7 @@ func renderNamespacePicker(filtered []string, cursor int, loading bool, query st
 
 	// Filter input on the left, controls hint on the right.
 	inputLeft := st.Header.Render("> ") + query + st.Dim.Render("|")
-	hint := st.Dim.Render("↑↓ navigate · Enter select · Esc cancel")
+	hint := st.Dim.Render("↑↓ navigate · * all-ns · Enter select · Esc cancel")
 	gap := max(1, width-lipgloss.Width(inputLeft)-lipgloss.Width(hint))
 	filterLine := inputLeft + strings.Repeat(" ", gap) + hint + "\n"
 
@@ -282,10 +287,18 @@ func renderNamespacePicker(filtered []string, cursor int, loading bool, query st
 		written++
 	}
 	for i := start; i < end; i++ {
+		item := filtered[i]
+		isAllNS := item == allNamespacesEntry
+		label := item
+		if isAllNS {
+			label = "* All Namespaces"
+		}
 		if i == cursor {
-			sb.WriteString(st.Header.Render("▶ "+filtered[i]) + "\n")
+			sb.WriteString(st.Header.Render("▶ "+label) + "\n")
+		} else if isAllNS {
+			sb.WriteString(st.Dim.Render("  "+label) + "\n")
 		} else {
-			sb.WriteString("  " + filtered[i] + "\n")
+			sb.WriteString("  " + label + "\n")
 		}
 		written++
 	}

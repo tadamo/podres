@@ -223,9 +223,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.namespaces = msg.namespaces
 		m.pickerCursor = 0
-		filtered := filteredNamespaces(msg.namespaces, m.pickerQuery)
-		for i, ns := range filtered {
-			if ns == m.namespace {
+		display := buildDisplayList(filteredNamespaces(msg.namespaces, m.pickerQuery), m.pickerQuery)
+		for i, item := range display {
+			if (item == allNamespacesEntry && m.allNamespaces) || item == m.namespace {
 				m.pickerCursor = i
 				break
 			}
@@ -278,6 +278,13 @@ func (m Model) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m
 	}
 
+	if msg.String() == "*" {
+		m.pickerQuery = ""
+		m.pickerCursor = 0 // allNamespacesEntry is always index 0 when query is empty
+		m = rebuild()
+		return m, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyRunes:
 		m.pickerQuery += string(msg.Runes)
@@ -306,16 +313,23 @@ func (m Model) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyDown:
-		if m.pickerCursor < len(filteredNamespaces(m.namespaces, m.pickerQuery))-1 {
+		display := buildDisplayList(filteredNamespaces(m.namespaces, m.pickerQuery), m.pickerQuery)
+		if m.pickerCursor < len(display)-1 {
 			m.pickerCursor++
 			m = rebuild()
 		}
 		return m, nil
 	case tea.KeyEnter:
-		filtered := filteredNamespaces(m.namespaces, m.pickerQuery)
-		if len(filtered) > 0 && m.pickerCursor < len(filtered) {
-			m.namespace = filtered[m.pickerCursor]
-			m.allNamespaces = false
+		display := buildDisplayList(filteredNamespaces(m.namespaces, m.pickerQuery), m.pickerQuery)
+		if len(display) > 0 && m.pickerCursor < len(display) {
+			selected := display[m.pickerCursor]
+			if selected == allNamespacesEntry {
+				m.allNamespaces = true
+				m.namespace = ""
+			} else {
+				m.namespace = selected
+				m.allNamespaces = false
+			}
 			m.pickerMode = false
 			m.pickerQuery = ""
 			m = rebuild()
@@ -349,6 +363,18 @@ func filteredNamespaces(namespaces []string, query string) []string {
 	return out
 }
 
+// buildDisplayList prepends the allNamespacesEntry sentinel when the query is empty
+// so users can always navigate back to all-namespaces mode from the picker.
+func buildDisplayList(filtered []string, query string) []string {
+	if query != "" {
+		return filtered
+	}
+	display := make([]string, 0, len(filtered)+1)
+	display = append(display, allNamespacesEntry)
+	display = append(display, filtered...)
+	return display
+}
+
 // rebuildViewport recomputes header/footer content and sizes the viewport to the
 // actual pod rows, with the TOTAL area pinned just below and the footer floated
 // to the bottom of the terminal via variable padding.
@@ -360,7 +386,8 @@ func (m Model) rebuildViewport() Model {
 	var footerBody string
 	if m.pickerMode {
 		filtered := filteredNamespaces(m.namespaces, m.pickerQuery)
-		footerBody = renderNamespacePicker(filtered, m.pickerCursor, m.pickerLoading, m.pickerQuery, m.styles, m.termWidth)
+		display := buildDisplayList(filtered, m.pickerQuery)
+		footerBody = renderNamespacePicker(display, m.pickerCursor, m.pickerLoading, m.pickerQuery, m.styles, m.termWidth)
 	} else {
 		footerBody = renderWatchFooterBody(sorted, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc, m.termWidth)
 	}
