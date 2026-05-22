@@ -10,10 +10,9 @@ type Styles struct {
 	Crit lipgloss.Style
 
 	// Row-level styles
-	Header      lipgloss.Style
-	PodName     lipgloss.Style
-	PodRestart  lipgloss.Style // pod name with non-zero restarts
-	Container   lipgloss.Style
+	Header    lipgloss.Style
+	PodName   lipgloss.Style
+	Container lipgloss.Style
 	PlainCell   lipgloss.Style
 	Divider     lipgloss.Style
 
@@ -28,7 +27,7 @@ func DefaultStyles(noColor bool) Styles {
 	if noColor {
 		return Styles{
 			OK: lipgloss.NewStyle(), Warn: lipgloss.NewStyle(), Crit: lipgloss.NewStyle(),
-			Header: lipgloss.NewStyle(), PodName: lipgloss.NewStyle(), PodRestart: lipgloss.NewStyle(),
+			Header: lipgloss.NewStyle(), PodName: lipgloss.NewStyle(),
 			Container: lipgloss.NewStyle(), PlainCell: lipgloss.NewStyle(),
 			Divider: lipgloss.NewStyle(),
 			StatusLine: lipgloss.NewStyle(),
@@ -41,9 +40,8 @@ func DefaultStyles(noColor bool) Styles {
 		Warn:       lipgloss.NewStyle().Foreground(lipgloss.Color("3")),           // yellow
 		Crit:       lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true), // bold red
 
-		Header:     lipgloss.NewStyle().Bold(true),
-		PodName:    lipgloss.NewStyle().Bold(true),
-		PodRestart: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3")), // bold yellow
+		Header:  lipgloss.NewStyle().Bold(true),
+		PodName: lipgloss.NewStyle().Bold(true),
 		Container:  lipgloss.NewStyle(),
 		PlainCell:  lipgloss.NewStyle(),
 		Divider:    lipgloss.NewStyle().Foreground(lipgloss.Color("8")), // dark gray

@@ -137,7 +137,8 @@ kubectl podres --sort cpu
 | `c` | Sort by CPU% |
 | `m` | Sort by Memory% |
 | `r` | Sort by restart count |
-| `n` | Sort by pod name |
+| `p` | Sort by pod name |
+| `n` | Sort by namespace (all-namespaces mode only) |
 | `0` | Clear sort |
 | `↑` / `↓` | Scroll |
 | `PgUp` / `PgDn` | Scroll by page |

@@ -10,11 +10,12 @@ import (
 type SortKey int
 
 const (
-	SortNone     SortKey = iota
-	SortCPU              // aggregate CPU usage %
-	SortMem              // aggregate memory usage %
-	SortRestarts         // total restart count
-	SortName             // pod name, alphabetical
+	SortNone      SortKey = iota
+	SortCPU               // aggregate CPU usage %
+	SortMem               // aggregate memory usage %
+	SortRestarts          // total restart count
+	SortName              // pod name, alphabetical
+	SortNamespace         // namespace, alphabetical (all-namespaces mode)
 )
 
 func (k SortKey) String() string {
@@ -27,12 +28,14 @@ func (k SortKey) String() string {
 		return "Restarts"
 	case SortName:
 		return "Name"
+	case SortNamespace:
+		return "Namespace"
 	default:
 		return ""
 	}
 }
 
-// ParseSortKey converts a CLI string ("cpu", "mem", "restarts", "name") to a SortKey.
+// ParseSortKey converts a CLI string ("cpu", "mem", "restarts", "name", "namespace") to a SortKey.
 func ParseSortKey(s string) SortKey {
 	switch s {
 	case "cpu":
@@ -43,6 +46,8 @@ func ParseSortKey(s string) SortKey {
 		return SortRestarts
 	case "name":
 		return SortName
+	case "namespace":
+		return SortNamespace
 	default:
 		return SortNone
 	}
@@ -64,9 +69,9 @@ func sortPods(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, key SortK
 		}
 		return cmp
 	})
-	// Reorder containers within each pod by the same key (skip SortName — pod
-	// name sort has no meaningful container ordering).
-	if key != SortName {
+	// Reorder containers within each pod by the same key (skip name/namespace sorts —
+	// they have no meaningful container ordering).
+	if key != SortName && key != SortNamespace {
 		for i := range out {
 			out[i] = sortPodContainers(out[i], metrics, key, desc)
 		}
@@ -80,7 +85,7 @@ func sortPodContainers(pod kube.PodSpec, metrics map[string]kube.PodMetrics, key
 	}
 	var pm *kube.PodMetrics
 	if metrics != nil {
-		if m, ok := metrics[pod.Name]; ok {
+		if m, ok := metrics[pod.Namespace+"/"+pod.Name]; ok {
 			pm = &m
 		}
 	}
@@ -147,7 +152,23 @@ func containerSortVal(c kube.ContainerSpec, pm *kube.PodMetrics, key SortKey) fl
 }
 
 func podCmp(a, b kube.PodSpec, metrics map[string]kube.PodMetrics, key SortKey) int {
-	if key == SortName {
+	switch key {
+	case SortNamespace:
+		if a.Namespace != b.Namespace {
+			if a.Namespace < b.Namespace {
+				return -1
+			}
+			return 1
+		}
+		// secondary: pod name
+		if a.Name < b.Name {
+			return -1
+		}
+		if a.Name > b.Name {
+			return 1
+		}
+		return 0
+	case SortName:
 		if a.Name < b.Name {
 			return -1
 		}
@@ -173,7 +194,7 @@ func podSortVal(pod kube.PodSpec, metrics map[string]kube.PodMetrics, key SortKe
 	}
 	var pm *kube.PodMetrics
 	if metrics != nil {
-		if m, ok := metrics[pod.Name]; ok {
+		if m, ok := metrics[pod.Namespace+"/"+pod.Name]; ok {
 			pm = &m
 		}
 	}

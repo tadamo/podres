@@ -15,6 +15,7 @@ import (
 // Options holds all CLI flag values.
 type Options struct {
 	Namespace     string
+	AllNamespaces bool
 	Selector      string
 	Interval      time.Duration
 	NoWatch       bool
@@ -57,6 +58,7 @@ func Execute() {
 func init() {
 	f := rootCmd.Flags()
 	f.StringP("namespace", "n", "", "namespace to watch (defaults to current context namespace)")
+	f.BoolP("all-namespaces", "A", false, "watch pods across all namespaces")
 	f.StringP("selector", "l", "", "label selector to filter pods (e.g. app=nginx)")
 	f.Duration("interval", 5*time.Second, "refresh interval in watch mode")
 	f.Bool("no-watch", false, "print once and exit")
@@ -67,12 +69,13 @@ func init() {
 	f.Bool("no-color", false, "disable colorized output")
 	f.Bool("pod-dividers", false, "draw a horizontal rule between each pod")
 	f.BoolP("wide", "w", false, "show full pod and container names without truncation")
-	f.String("sort", "", "initial sort column: cpu, mem, restarts, name")
+	f.String("sort", "", "initial sort column: cpu, mem, restarts, name, namespace")
 }
 
 func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 	f := cmd.Flags()
 	namespace, _ := f.GetString("namespace")
+	allNamespaces, _ := f.GetBool("all-namespaces")
 	selector, _ := f.GetString("selector")
 	interval, _ := f.GetDuration("interval")
 	noWatch, _ := f.GetBool("no-watch")
@@ -85,12 +88,16 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 	wide, _ := f.GetBool("wide")
 	sort, _ := f.GetString("sort")
 
+	if allNamespaces && namespace != "" {
+		return Options{}, fmt.Errorf("--all-namespaces (-A) and --namespace (-n) are mutually exclusive")
+	}
 	if warnPct >= critPct {
 		return Options{}, fmt.Errorf("--threshold-warn (%d) must be less than --threshold-crit (%d)", warnPct, critPct)
 	}
 
 	return Options{
 		Namespace:     namespace,
+		AllNamespaces: allNamespaces,
 		Selector:      selector,
 		Interval:      interval,
 		NoWatch:       noWatch,
@@ -98,10 +105,10 @@ func optionsFromFlags(cmd *cobra.Command) (Options, error) {
 		Context:       context,
 		ThresholdWarn: warnPct,
 		ThresholdCrit: critPct,
-		NoColor:     noColor,
-		PodDividers: podDividers,
-		Wide:        wide,
-		Sort:        sort,
+		NoColor:       noColor,
+		PodDividers:   podDividers,
+		Wide:          wide,
+		Sort:          sort,
 	}, nil
 }
 
@@ -111,8 +118,10 @@ func runPodres(opts Options) error {
 		return fmt.Errorf("connect to cluster: %w", err)
 	}
 
+	// In all-namespaces mode, pass "" to the API (means all namespaces).
+	// Otherwise resolve the namespace from the flag or current context.
 	namespace := opts.Namespace
-	if namespace == "" {
+	if !opts.AllNamespaces && namespace == "" {
 		namespace, err = client.CurrentNamespace()
 		if err != nil {
 			return fmt.Errorf("resolve namespace: %w", err)
@@ -129,7 +138,7 @@ func runPodres(opts Options) error {
 		Crit: opts.ThresholdCrit,
 	}
 	styles := ui.DefaultStyles(opts.NoColor)
-	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch, opts.PodDividers, opts.Wide, ui.ParseSortKey(opts.Sort))
+	model := ui.New(client, namespace, opts.Selector, cluster, user, thresh, styles, opts.Interval, opts.NoWatch, opts.PodDividers, opts.Wide, opts.AllNamespaces, ui.ParseSortKey(opts.Sort))
 
 	var progOpts []tea.ProgramOption
 	if !opts.NoWatch {

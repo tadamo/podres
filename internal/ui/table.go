@@ -13,6 +13,7 @@ import (
 
 // column widths in terminal characters
 const (
+	colNamespace = 20 // NAMESPACE column (all-namespaces mode only)
 	colPod       = 38
 	colContainer = 16
 	colPhase     = 14 // "● Running" / "◌ Pending" / "✔ Succeeded" / "✕ Failed"
@@ -24,49 +25,73 @@ const (
 	colPct       = 7  // CPU%, MEM%
 )
 
-// fixedWidths holds the widths of all columns except POD and CONTAINER,
-// in the order they appear after those two variable-width columns.
-// Index mapping: 0=POD(variable), 1=PHASE, 2=DIVIDER, 3=CONTAINER(variable),
-// 4=STATUS, 5=READY, 6=RESTARTS, 7..10=CPU cols, 11..14=MEM cols.
 var columnHeaders = []string{
 	"POD", "PHASE", "│", "CONTAINER", "STATE", "READY", "RESTARTS",
 	"CPU-REQ", "CPU-LIM", "CPU-USE", "CPU%",
 	"MEM-REQ", "MEM-LIM", "MEM-USE", "MEM%",
 }
 
-// layout holds the effective widths for the two variable-width columns.
+func effectiveHeaders(allNamespaces bool) []string {
+	if !allNamespaces {
+		return columnHeaders
+	}
+	h := make([]string, 0, len(columnHeaders)+1)
+	h = append(h, "NAMESPACE")
+	h = append(h, columnHeaders...)
+	return h
+}
+
+// layout holds the effective widths for the variable-width columns.
 type layout struct {
 	podCol       int
 	containerCol int
+	namespaceCol int // > 0 only when allNamespaces
+	allNamespaces bool
 }
 
 // newLayout returns a layout using the default column widths, or in wide mode
-// expands them to fit the longest pod and container names in the data.
-func newLayout(pods []kube.PodSpec, wide bool) layout {
-	if !wide {
-		return layout{colPod, colContainer}
+// expands them to fit the longest pod, container, and namespace names in the data.
+func newLayout(pods []kube.PodSpec, wide, allNamespaces bool) layout {
+	l := layout{
+		podCol:        colPod,
+		containerCol:  colContainer,
+		allNamespaces: allNamespaces,
 	}
-	pc, cc := colPod, colContainer
+	if allNamespaces {
+		l.namespaceCol = colNamespace
+	}
+	if !wide {
+		return l
+	}
 	for _, pod := range pods {
-		if n := len(pod.Name); n > pc {
-			pc = n
+		if n := len(pod.Name); n > l.podCol {
+			l.podCol = n
+		}
+		if allNamespaces {
+			if n := len(pod.Namespace); n > l.namespaceCol {
+				l.namespaceCol = n
+			}
 		}
 		for _, c := range pod.Containers {
-			if n := len(c.Name); n > cc {
-				cc = n
+			if n := len(c.Name); n > l.containerCol {
+				l.containerCol = n
 			}
 		}
 	}
-	return layout{pc, cc}
+	return l
 }
 
 // colWidths returns the full ordered slice of column widths for the given layout.
 func (l layout) colWidths() []int {
-	return []int{
+	base := []int{
 		l.podCol, colPhase, colDivider, l.containerCol, colStatus, colReady, colRestarts,
 		colVal, colVal, colVal, colPct,
 		colVal, colVal, colVal, colPct,
 	}
+	if l.allNamespaces {
+		return append([]int{l.namespaceCol}, base...)
+	}
+	return base
 }
 
 // totalWidth returns the total rendered width including inter-cell spaces.
@@ -77,10 +102,6 @@ func (l layout) totalWidth() int {
 		w += cw
 	}
 	return w
-}
-
-type warningEntry struct {
-	pod, container, msg string
 }
 
 // RenderFixedHeader returns the pinned top portion: status line, ResourceQuota
@@ -94,19 +115,28 @@ func RenderFixedHeader(
 	thresh threshold.Config,
 	st Styles,
 	wide bool,
+	allNamespaces bool,
 	sortKey SortKey,
 	sortDesc bool,
 ) string {
-	lay := newLayout(pods, wide)
+	lay := newLayout(pods, wide, allNamespaces)
 	var sb strings.Builder
-	sb.WriteString(renderStatusLine(namespace, cluster, user, st, lay))
+	displayNS := namespace
+	if allNamespaces {
+		displayNS = "All Namespaces"
+	}
+	sb.WriteString(renderStatusLine(displayNS, cluster, user, st, lay))
 	sb.WriteString("\n\n")
-	if selector != "" {
+	switch {
+	case allNamespaces:
+		sb.WriteString(st.Divider.Render("◌  ResourceQuota not shown in all-namespaces view"))
+		sb.WriteString("\n")
+	case selector != "":
 		sb.WriteString(st.Divider.Render("◌  ResourceQuota hidden (label selector active)"))
 		sb.WriteString("\n")
-	} else if quota != nil {
+	case quota != nil:
 		sb.WriteString(renderQuotaSection(quota, computeTotals(pods, metrics), thresh, st))
-	} else {
+	default:
 		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
 		sb.WriteString("\n")
 	}
@@ -125,8 +155,9 @@ func RenderBody(
 	st Styles,
 	podDividers bool,
 	wide bool,
+	allNamespaces bool,
 ) string {
-	lay := newLayout(pods, wide)
+	lay := newLayout(pods, wide, allNamespaces)
 	var sb strings.Builder
 	for _, pod := range pods {
 		if podDividers {
@@ -134,7 +165,7 @@ func RenderBody(
 		}
 		var pm *kube.PodMetrics
 		if metrics != nil {
-			if m, ok := metrics[pod.Name]; ok {
+			if m, ok := metrics[pod.Namespace+"/"+pod.Name]; ok {
 				pm = &m
 			}
 		}
@@ -144,68 +175,22 @@ func RenderBody(
 }
 
 // RenderTotalArea returns the thick divider and TOTAL row as two pinned lines.
-func RenderTotalArea(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, st Styles, wide bool) string {
-	lay := newLayout(pods, wide)
+func RenderTotalArea(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, st Styles, wide bool, allNamespaces bool) string {
+	lay := newLayout(pods, wide, allNamespaces)
 	totals := computeTotals(pods, metrics)
 	return renderThickDivider(st, lay) + renderTotalsRow(totals, st, lay) + "\n"
 }
 
-// computeWarnings returns threshold violation entries for all containers.
-func computeWarnings(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config) []warningEntry {
-	var warns []warningEntry
-	for _, pod := range pods {
-		var pm *kube.PodMetrics
-		if metrics != nil {
-			if m, ok := metrics[pod.Name]; ok {
-				pm = &m
-			}
-		}
-		for _, c := range pod.Containers {
-			var cm *kube.ContainerMetrics
-			if pm != nil {
-				for j := range pm.Containers {
-					if pm.Containers[j].Name == c.Name {
-						cm = &pm.Containers[j]
-						break
-					}
-				}
-			}
-			avail := cm != nil
-			_, cpuPct, cpuLvl := usageCells(avail, maybeMilliValue(cm, true), c.CPULimit.MilliValue(), c.CPURequest.MilliValue(), thresh, fmtMilliCPU)
-			_, memPct, memLvl := usageCells(avail, maybeMilliValue(cm, false), c.MemLimit.Value(), c.MemRequest.Value(), thresh, fmtBytes)
-			if cpuLvl >= threshold.LevelWarn {
-				warns = append(warns, warningEntry{pod.Name, c.Name, fmt.Sprintf("CPU %s — %s", cpuPct, levelLabel(cpuLvl))})
-			}
-			if memLvl >= threshold.LevelWarn {
-				warns = append(warns, warningEntry{pod.Name, c.Name, fmt.Sprintf("MEM %s — %s", memPct, levelLabel(memLvl))})
-			}
-		}
-	}
-	return warns
-}
-
-// renderWatchFooterBody returns warnings (if any) and the sort hint, with no leading blank line.
-// termWidth is the terminal width; the sort hint right-aligns to min(termWidth, lay.totalWidth()).
-func renderWatchFooterBody(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool, termWidth int) string {
-	warns := computeWarnings(pods, metrics, thresh)
-	lay := newLayout(pods, wide)
-	var sb strings.Builder
-	if len(warns) > 0 {
-		sb.WriteString(st.Warn.Render("⚠  Warnings:"))
-		sb.WriteString("\n")
-		for _, w := range warns {
-			fmt.Fprintf(&sb, "   %s (%s): %s\n", st.Warn.Render(w.container), w.pod, w.msg)
-		}
-	}
-	sb.WriteString(renderSortHint(sortKey, sortDesc, st, min(termWidth, lay.totalWidth())))
-	sb.WriteString("\n")
-	return sb.String()
+// renderWatchFooterBody returns the sort hint line, right-aligned to min(termWidth, lay.totalWidth()).
+func renderWatchFooterBody(pods []kube.PodSpec, st Styles, wide bool, allNamespaces bool, sortKey SortKey, sortDesc bool, termWidth int) string {
+	lay := newLayout(pods, wide, allNamespaces)
+	return renderSortHint(sortKey, sortDesc, st, min(termWidth, lay.totalWidth()), allNamespaces) + "\n"
 }
 
 // RenderFixedFooter returns the pinned bottom portion for no-watch mode.
-func RenderFixedFooter(pods []kube.PodSpec, metrics map[string]kube.PodMetrics, thresh threshold.Config, st Styles, wide bool, sortKey SortKey, sortDesc bool) string {
-	lay := newLayout(pods, wide)
-	return "\n" + renderWatchFooterBody(pods, metrics, thresh, st, wide, sortKey, sortDesc, lay.totalWidth())
+func RenderFixedFooter(pods []kube.PodSpec, st Styles, wide bool, allNamespaces bool, sortKey SortKey, sortDesc bool) string {
+	lay := newLayout(pods, wide, allNamespaces)
+	return "\n" + renderWatchFooterBody(pods, st, wide, allNamespaces, sortKey, sortDesc, lay.totalWidth())
 }
 
 // Render returns the complete output for --no-watch mode (header + body + total + footer).
@@ -218,18 +203,19 @@ func Render(
 	st Styles,
 	podDividers bool,
 	wide bool,
+	allNamespaces bool,
 	sortKey SortKey,
 	sortDesc bool,
 ) string {
-	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, sortKey, sortDesc) +
-		RenderBody(pods, metrics, thresh, st, podDividers, wide) +
-		RenderTotalArea(pods, metrics, st, wide) +
-		RenderFixedFooter(pods, metrics, thresh, st, wide, sortKey, sortDesc)
+	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, allNamespaces, sortKey, sortDesc) +
+		RenderBody(pods, metrics, thresh, st, podDividers, wide, allNamespaces) +
+		RenderTotalArea(pods, metrics, st, wide, allNamespaces) +
+		RenderFixedFooter(pods, st, wide, allNamespaces, sortKey, sortDesc)
 }
 
 // renderSortHint returns a right-aligned dim line with the arrow embedded in the active key.
 // width is the column to right-align to (caller passes min(termWidth, lay.totalWidth())).
-func renderSortHint(key SortKey, desc bool, st Styles, width int) string {
+func renderSortHint(key SortKey, desc bool, st Styles, width int, allNamespaces bool) string {
 	arrow := "↓"
 	if !desc {
 		arrow = "↑"
@@ -240,12 +226,15 @@ func renderSortHint(key SortKey, desc bool, st Styles, width int) string {
 		}
 		return label
 	}
-	keys := fmt.Sprintf("c=%s · m=%s · r=%s · n=%s",
+	keys := fmt.Sprintf("c=%s · m=%s · r=%s · p=%s",
 		mark(SortCPU, "cpu"),
 		mark(SortMem, "mem"),
 		mark(SortRestarts, "restarts"),
 		mark(SortName, "name"),
 	)
+	if allNamespaces {
+		keys += fmt.Sprintf(" · n=%s", mark(SortNamespace, "namespace"))
+	}
 	if key != SortNone {
 		keys += " · 0=off"
 	}
@@ -271,31 +260,38 @@ func renderStatusLine(namespace, cluster, user string, st Styles, lay layout) st
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// sortHeaderCol returns the columnHeaders index that corresponds to the given sort key.
-func sortHeaderCol(key SortKey) int {
+// sortHeaderCol returns the effectiveHeaders index that corresponds to the given sort key.
+func sortHeaderCol(key SortKey, allNamespaces bool) int {
+	offset := 0
+	if allNamespaces {
+		offset = 1
+	}
 	switch key {
+	case SortNamespace:
+		return 0 // only present when allNamespaces
 	case SortName:
-		return 0 // POD
+		return 0 + offset // POD
 	case SortRestarts:
-		return 6 // RESTARTS
+		return 6 + offset // RESTARTS
 	case SortCPU:
-		return 10 // CPU%
+		return 10 + offset // CPU%
 	case SortMem:
-		return 14 // MEM%
+		return 14 + offset // MEM%
 	default:
 		return -1
 	}
 }
 
 func renderHeaderRow(st Styles, lay layout, sortKey SortKey, sortDesc bool) string {
+	headers := effectiveHeaders(lay.allNamespaces)
 	widths := lay.colWidths()
-	cells := make([]string, len(columnHeaders))
-	activeCol := sortHeaderCol(sortKey)
+	cells := make([]string, len(headers))
+	activeCol := sortHeaderCol(sortKey, lay.allNamespaces)
 	arrow := "↓"
 	if !sortDesc {
 		arrow = "↑"
 	}
-	for i, h := range columnHeaders {
+	for i, h := range headers {
 		style := st.Header
 		if h == "│" {
 			style = st.Divider
@@ -327,7 +323,7 @@ func computeTotals(pods []kube.PodSpec, metrics map[string]kube.PodMetrics) tabl
 	for _, pod := range pods {
 		var pm *kube.PodMetrics
 		if metrics != nil {
-			if m, ok := metrics[pod.Name]; ok {
+			if m, ok := metrics[pod.Namespace+"/"+pod.Name]; ok {
 				pm = &m
 			}
 		}
@@ -371,7 +367,11 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 		memUseStr = fmtOrDash(t.memUseBytes, fmtBytes)
 	}
 
-	cells := []string{
+	cells := []string{}
+	if lay.allNamespaces {
+		cells = append(cells, st.PlainCell.Width(lay.namespaceCol).Render(""))
+	}
+	cells = append(cells,
 		st.Header.Width(lay.podCol).Render("TOTAL"),
 		st.PlainCell.Width(colPhase).Render(""),
 		st.Divider.Width(colDivider).Render("│"),
@@ -387,7 +387,7 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 		st.Header.Width(colVal).Render(fmtOrDash(t.memLimBytes, fmtBytes)),
 		st.Header.Width(colVal).Render(memUseStr),
 		st.PlainCell.Width(colPct).Render("—"),
-	}
+	)
 	return strings.Join(cells, " ")
 }
 
@@ -462,12 +462,9 @@ func renderPodRows(
 	}
 
 	podStyle := rowSt.PodName
-	if pod.Restarts > 0 {
-		podStyle = rowSt.PodRestart
-	}
 
 	for i, c := range pod.Containers {
-		// Only the first container row shows the pod name.
+		// Only the first container row shows the pod name (and namespace in all-namespaces mode).
 		podLabel := ""
 		if i == 0 {
 			podLabel = truncate(pod.Name, lay.podCol)
@@ -520,7 +517,16 @@ func renderPodRows(
 		statusSym, statusStyle := containerStatusCell(c.Status, pod.Phase, rowSt)
 		readySym, readyStyle := containerReadyCell(c.Ready, pod.Phase, rowSt)
 		restartsStr, restartsStyle := containerRestartsCell(c.Restarts, c.LastRestartReason, rowSt)
-		cells := []string{
+
+		cells := []string{}
+		if lay.allNamespaces {
+			nsLabel := ""
+			if i == 0 {
+				nsLabel = truncate(pod.Namespace, lay.namespaceCol)
+			}
+			cells = append(cells, rowSt.PlainCell.Width(lay.namespaceCol).Render(nsLabel))
+		}
+		cells = append(cells,
 			pStyle.Width(lay.podCol).Render(podLabel),
 			phaseStyle.Width(colPhase).Render(phaseLabel),
 			rowSt.Divider.Width(colDivider).Render("│"),
@@ -536,7 +542,7 @@ func renderPodRows(
 			rowSt.PlainCell.Width(colVal).Render(quantityStr(c.MemLimit)),
 			rowSt.PlainCell.Width(colVal).Render(memUseStr),
 			levelStyle(rowSt, memLvl).Width(colPct).Render(memPctStr),
-		}
+		)
 		sb.WriteString(strings.Join(cells, " "))
 		sb.WriteString("\n")
 	}
@@ -545,6 +551,8 @@ func renderPodRows(
 }
 
 // usageCells returns the formatted usage string, percentage string, and threshold level.
+// The percentage string includes a symbol suffix for non-OK levels so threshold violations
+// are visible without relying on color alone: ⚠ for warn, ! for crit.
 func usageCells(
 	avail bool,
 	usage, limit, request int64,
@@ -565,7 +573,15 @@ func usageCells(
 	}
 
 	pct := float64(usage) / float64(divisor) * 100
-	return useStr, fmt.Sprintf("%.0f%%", pct), thresh.Classify(pct)
+	lvl = thresh.Classify(pct)
+	pctStr = fmt.Sprintf("%.0f%%", pct)
+	switch lvl {
+	case threshold.LevelWarn:
+		pctStr += "⚠"
+	case threshold.LevelCrit:
+		pctStr += "‼"
+	}
+	return useStr, pctStr, lvl
 }
 
 // maybeMilliValue returns the CPU (milli) or memory (raw) value from ContainerMetrics,
@@ -585,13 +601,12 @@ func maybeMilliValue(cm *kube.ContainerMetrics, cpu bool) int64 {
 func dimStyles(st Styles) Styles {
 	d := func(s lipgloss.Style) lipgloss.Style { return s.Faint(true) }
 	return Styles{
-		OK:         d(st.OK),
-		Warn:       d(st.Warn),
-		Crit:       d(st.Crit),
-		Header:     d(st.Header),
-		PodName:    d(st.PodName),
-		PodRestart: d(st.PodRestart),
-		Container:  d(st.Container),
+		OK:        d(st.OK),
+		Warn:      d(st.Warn),
+		Crit:      d(st.Crit),
+		Header:    d(st.Header),
+		PodName:   d(st.PodName),
+		Container: d(st.Container),
 		PlainCell:  d(st.PlainCell),
 		Divider:    d(st.Divider),
 		StatusLine: d(st.StatusLine),
@@ -608,13 +623,6 @@ func levelStyle(st Styles, lvl threshold.Level) lipgloss.Style {
 	default:
 		return st.OK
 	}
-}
-
-func levelLabel(lvl threshold.Level) string {
-	if lvl >= threshold.LevelCrit {
-		return "exceeding threshold"
-	}
-	return "approaching threshold"
 }
 
 func truncate(s string, max int) string {

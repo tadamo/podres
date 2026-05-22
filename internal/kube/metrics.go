@@ -39,7 +39,7 @@ func (c *Client) FetchMetrics(namespace string) (map[string]PodMetrics, error) {
 
 	result := make(map[string]PodMetrics, len(list.Items))
 	for _, pm := range list.Items {
-		result[pm.Name] = podMetricsFromAPI(pm)
+		result[pm.Namespace+"/"+pm.Name] = podMetricsFromAPI(pm)
 	}
 	return result, nil
 }

@@ -13,17 +13,18 @@ import (
 
 // Model is the Bubbletea application model for watch-mode display.
 type Model struct {
-	client      *kube.Client
-	namespace   string
-	selector    string
-	cluster     string
-	user        string
-	thresh      threshold.Config
-	styles      Styles
-	interval    time.Duration
-	noWatch     bool
-	podDividers bool
-	wide        bool
+	client        *kube.Client
+	namespace     string
+	selector      string
+	cluster       string
+	user          string
+	thresh        threshold.Config
+	styles        Styles
+	interval      time.Duration
+	noWatch       bool
+	podDividers   bool
+	wide          bool
+	allNamespaces bool
 
 	// sort state
 	sortKey  SortKey
@@ -65,25 +66,35 @@ func New(
 	noWatch bool,
 	podDividers bool,
 	wide bool,
+	allNamespaces bool,
 	initialSort SortKey,
 ) Model {
-	// CPU/mem/restarts default to descending (highest first); name defaults to ascending.
+	// CPU/mem/restarts default to descending (highest first); name/namespace default to ascending.
 	desc := initialSort == SortCPU || initialSort == SortMem || initialSort == SortRestarts
 	return Model{
-		client:      client,
-		namespace:   namespace,
-		selector:    selector,
-		cluster:     cluster,
-		user:        user,
-		thresh:      thresh,
-		styles:      styles,
-		interval:    interval,
-		noWatch:     noWatch,
-		podDividers: podDividers,
-		wide:        wide,
-		sortKey:     initialSort,
-		sortDesc:    desc,
+		client:        client,
+		namespace:     namespace,
+		selector:      selector,
+		cluster:       cluster,
+		user:          user,
+		thresh:        thresh,
+		styles:        styles,
+		interval:      interval,
+		noWatch:       noWatch,
+		podDividers:   podDividers,
+		wide:          wide,
+		allNamespaces: allNamespaces,
+		sortKey:       initialSort,
+		sortDesc:      desc,
 	}
+}
+
+// displayNamespace returns the namespace string for UI display.
+func (m Model) displayNamespace() string {
+	if m.allNamespaces {
+		return "All Namespaces"
+	}
+	return m.namespace
 }
 
 // Init triggers the first data fetch immediately on startup.
@@ -129,12 +140,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.rebuildViewport()
 			}
 			return m, nil
-		case "n":
+		case "p":
 			m = m.cycleSort(SortName)
 			if m.ready && m.pods != nil {
 				m = m.rebuildViewport()
 			}
 			return m, nil
+		case "n":
+			if m.allNamespaces {
+				m = m.cycleSort(SortNamespace)
+				if m.ready && m.pods != nil {
+					m = m.rebuildViewport()
+				}
+				return m, nil
+			}
 		case "0":
 			m.sortKey = SortNone
 			m.sortDesc = false
@@ -182,7 +201,7 @@ func (m Model) View() string {
 	}
 	if m.noWatch {
 		sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
-		return Render(m.namespace, m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide, m.sortKey, m.sortDesc)
+		return Render(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide, m.allNamespaces, m.sortKey, m.sortDesc)
 	}
 	if !m.ready {
 		return "Loading…\n"
@@ -206,11 +225,11 @@ func (m Model) cycleSort(key SortKey) Model {
 // to the bottom of the terminal via variable padding.
 func (m Model) rebuildViewport() Model {
 	sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
-	m.headerContent = RenderFixedHeader(m.namespace, m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc)
+	m.headerContent = RenderFixedHeader(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc)
 
-	totalArea := RenderTotalArea(sorted, m.metrics, m.styles, m.wide)
-	footerBody := renderWatchFooterBody(sorted, m.metrics, m.thresh, m.styles, m.wide, m.sortKey, m.sortDesc, m.termWidth)
-	podBody := RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide)
+	totalArea := RenderTotalArea(sorted, m.metrics, m.styles, m.wide, m.allNamespaces)
+	footerBody := renderWatchFooterBody(sorted, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc, m.termWidth)
+	podBody := RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide, m.allNamespaces)
 
 	headerLines := strings.Count(m.headerContent, "\n")
 	totalAreaLines := strings.Count(totalArea, "\n")
@@ -243,9 +262,13 @@ func (m Model) fetchCmd() tea.Cmd {
 		if err != nil {
 			return fetchResult{err: err}
 		}
-		quota, err := m.client.GetResourceQuota(m.namespace)
-		if err != nil {
-			return fetchResult{err: err}
+		// Quota is per-namespace and not meaningful in all-namespaces mode.
+		var quota *kube.NamespaceQuota
+		if !m.allNamespaces {
+			quota, err = m.client.GetResourceQuota(m.namespace)
+			if err != nil {
+				return fetchResult{err: err}
+			}
 		}
 		return fetchResult{pods: pods, metrics: metrics, quota: quota}
 	}
