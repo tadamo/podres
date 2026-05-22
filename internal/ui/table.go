@@ -369,10 +369,14 @@ func renderTotalsRow(t tableTotals, st Styles, lay layout) string {
 
 	cells := []string{}
 	if lay.allNamespaces {
-		cells = append(cells, st.PlainCell.Width(lay.namespaceCol).Render(""))
+		cells = append(cells,
+			st.Header.Width(lay.namespaceCol).Render("TOTAL"),
+			st.PlainCell.Width(lay.podCol).Render(""),
+		)
+	} else {
+		cells = append(cells, st.Header.Width(lay.podCol).Render("TOTAL"))
 	}
 	cells = append(cells,
-		st.Header.Width(lay.podCol).Render("TOTAL"),
 		st.PlainCell.Width(colPhase).Render(""),
 		st.Divider.Width(colDivider).Render("│"),
 		st.PlainCell.Width(lay.containerCol).Render(""),
