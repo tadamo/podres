@@ -17,17 +17,13 @@ A `kubectl` (or `oc`) plugin that shows a real-time, colorized view of Kubernete
                                                worker          Running  1/1    0         500m     1000m    823m     82%   512Mi    1Gi      756Mi     73%
                                                sidecar-proxy   Running  1/1    0         100m     200m     31m      15%   128Mi    256Mi    71Mi      27%
  cache-proxy-6d9e7f8c4-jn4vt          Running
-                                               cache-proxy     Running  1/1    3 Error   100m     200m     196m     98%   64Mi     128Mi    122Mi     95%
+                                               cache-proxy     Running  1/1    3 OOM     100m     200m     196m     98%‼  64Mi     128Mi    122Mi     95%‼
                                                sidecar-proxy   Running  1/1    0         100m     200m     18m      9%    128Mi    256Mi    54Mi      21%
  job-processor-79c4b6f8d-hp8xs        Running
                                                job-processor   Running  1/1    0         1000m    2000m    762m     38%   1Gi      2Gi      892Mi     43%
                                                sidecar-proxy   Running  1/1    0         100m     200m     28m      14%   128Mi    256Mi    74Mi      28%
 
  TOTAL                                                                            2250m    4500m    2023m         2176Mi   4352Mi   2234Mi
-
-⚠  Warnings:
-   cache-proxy (cache-proxy-6d9e7f8c4-jn4vt): CPU 98% — exceeding threshold
-   cache-proxy (cache-proxy-6d9e7f8c4-jn4vt): MEM 95% — exceeding threshold
 ```
 
 ## Prerequisites
@@ -97,6 +93,9 @@ kubectl podres
 # Watch a specific namespace
 kubectl podres -n kube-system
 
+# Watch pods across all namespaces
+kubectl podres -A
+
 # Filter by label selector
 kubectl podres -l app=nginx
 
@@ -118,6 +117,7 @@ kubectl podres --sort cpu
 | Flag | Default | Description |
 |---|---|---|
 | `-n, --namespace` | current context | Namespace to watch |
+| `-A, --all-namespaces` | `false` | Watch pods across all namespaces |
 | `-l, --selector` | | Label selector to filter pods (e.g. `app=nginx`) |
 | `--interval` | `5s` | Refresh interval in watch mode |
 | `--no-watch` | `false` | Print once and exit |
@@ -128,7 +128,9 @@ kubectl podres --sort cpu
 | `--no-color` | `false` | Disable colorized output |
 | `--pod-dividers` | `false` | Draw a horizontal rule between each pod |
 | `-w, --wide` | `false` | Show full pod and container names without truncation |
-| `--sort` | | Initial sort column: `cpu`, `mem`, `restarts`, `name` |
+| `--sort` | | Initial sort column: `cpu`, `mem`, `restarts`, `name`, `namespace` |
+
+> `--all-namespaces` and `--namespace` are mutually exclusive. `--threshold-warn` must be less than `--threshold-crit`.
 
 ## Keyboard shortcuts (watch mode)
 
@@ -139,20 +141,37 @@ kubectl podres --sort cpu
 | `r` | Sort by restart count |
 | `p` | Sort by pod name |
 | `n` | Sort by namespace (all-namespaces mode only) |
-| `0` | Clear sort |
+| `0` | Clear sort (pressing a sort key again reverses direction) |
+| `f` | Open namespace picker (switch namespace without restarting) |
 | `↑` / `↓` | Scroll |
 | `PgUp` / `PgDn` | Scroll by page |
 | `q` / `Ctrl+C` | Quit |
 
+### Namespace picker (`f`)
+
+Pressing `f` opens an interactive namespace picker at the bottom of the screen. Type to filter the list, use `↑`/`↓` to navigate, press `Enter` to switch, and `Esc` to cancel. Press `*` to jump straight to the **All Namespaces** entry.
+
 ## Color coding
 
-| Usage | Color |
-|---|---|
-| < 75% | Green |
-| 75–94% | Yellow |
-| ≥ 95% | Bold red |
+| Usage | Color | Symbol |
+|---|---|---|
+| < threshold-warn | Green | (none) |
+| ≥ threshold-warn | Yellow | `⚠` |
+| ≥ threshold-crit | Bold red | `‼` |
 
-Pods with non-zero restart counts are highlighted in yellow. The last termination reason (OOMKilled, Error, etc.) is shown in the RESTARTS column.
+Threshold symbols (⚠ and ‼) are appended to the CPU% and MEM% values so threshold violations are visible even with `--no-color`.
+
+Pods with non-zero restart counts are highlighted in yellow. OOMKilled restarts are shown in bold red. The abbreviated last-termination reason is shown alongside the restart count (e.g. `3 OOM`, `2 Err`).
+
+Pods in `Succeeded` or `Failed` phase are dimmed to de-emphasize completed workloads.
+
+## ResourceQuota
+
+When a `ResourceQuota` is set on the namespace, podres displays a summary above the pod table showing CPU and memory request/limit usage against the quota. Usage values are threshold-colored just like the per-container columns.
+
+The quota section is hidden when:
+- Running in `--all-namespaces` mode (quota is per-namespace)
+- A label selector (`-l`) is active (totals would not reflect the full namespace)
 
 ## License
 
