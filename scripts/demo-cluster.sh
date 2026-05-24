@@ -25,6 +25,10 @@ require kind kubectl
 
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
   info "kind cluster '$CLUSTER_NAME' already exists — skipping creation"
+  # Refresh the kubeconfig entry; 'kind create cluster' normally does this as a
+  # side effect, so we must do it explicitly when skipping creation to ensure
+  # the context exists before any kubectl calls below.
+  kind export kubeconfig --name "$CLUSTER_NAME"
 else
   info "Creating kind cluster '$CLUSTER_NAME' …"
   kind create cluster --name "$CLUSTER_NAME" --wait 60s

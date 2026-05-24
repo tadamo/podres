@@ -249,7 +249,7 @@ func (m Model) View() string {
 	}
 	if m.noWatch {
 		sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
-		return Render(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide, m.allNamespaces, m.sortKey, m.sortDesc)
+		return Render(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.podDividers, m.wide, m.allNamespaces, m.sortKey, m.sortDesc, m.termWidth)
 	}
 	if !m.ready {
 		return "Loading…\n"
@@ -380,7 +380,7 @@ func buildDisplayList(filtered []string, query string) []string {
 // to the bottom of the terminal via variable padding.
 func (m Model) rebuildViewport() Model {
 	sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
-	m.headerContent = RenderFixedHeader(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc)
+	m.headerContent = RenderFixedHeader(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc, m.termWidth)
 
 	totalArea := RenderTotalArea(sorted, m.metrics, m.styles, m.wide, m.allNamespaces)
 	var footerBody string

@@ -107,6 +107,7 @@ func (l layout) totalWidth() int {
 // RenderFixedHeader returns the pinned top portion: status line, ResourceQuota
 // section (or a placeholder message), sort hint, column headers, and divider.
 // Its line count is variable — use strings.Count(result, "\n") to measure it.
+// termWidth is the current terminal width; pass 0 when unknown (falls back to table width).
 func RenderFixedHeader(
 	namespace, cluster, user, selector string,
 	pods []kube.PodSpec,
@@ -118,6 +119,7 @@ func RenderFixedHeader(
 	allNamespaces bool,
 	sortKey SortKey,
 	sortDesc bool,
+	termWidth int,
 ) string {
 	lay := newLayout(pods, wide, allNamespaces)
 	var sb strings.Builder
@@ -125,7 +127,7 @@ func RenderFixedHeader(
 	if allNamespaces {
 		displayNS = "All Namespaces"
 	}
-	sb.WriteString(renderStatusLine(displayNS, cluster, user, st, lay))
+	sb.WriteString(renderStatusLine(displayNS, cluster, user, st, lay, termWidth))
 	sb.WriteString("\n\n")
 	switch {
 	case allNamespaces:
@@ -194,6 +196,7 @@ func RenderFixedFooter(pods []kube.PodSpec, st Styles, wide bool, allNamespaces 
 }
 
 // Render returns the complete output for --no-watch mode (header + body + total + footer).
+// termWidth is the current terminal width; pass 0 when unknown (falls back to table width).
 func Render(
 	namespace, cluster, user, selector string,
 	pods []kube.PodSpec,
@@ -206,8 +209,9 @@ func Render(
 	allNamespaces bool,
 	sortKey SortKey,
 	sortDesc bool,
+	termWidth int,
 ) string {
-	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, allNamespaces, sortKey, sortDesc) +
+	return RenderFixedHeader(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, allNamespaces, sortKey, sortDesc, termWidth) +
 		RenderBody(pods, metrics, thresh, st, podDividers, wide, allNamespaces) +
 		RenderTotalArea(pods, metrics, st, wide, allNamespaces) +
 		RenderFixedFooter(pods, st, wide, allNamespaces, sortKey, sortDesc)
@@ -342,19 +346,22 @@ func renderSortHint(key SortKey, desc bool, st Styles, width int, allNamespaces 
 	return strings.Repeat(" ", pad) + rendered
 }
 
-func renderStatusLine(namespace, cluster, user string, st Styles, lay layout) string {
+func renderStatusLine(namespace, cluster, user string, st Styles, lay layout, termWidth int) string {
 	now := time.Now()
 	tz, _ := now.Zone()
 
-	left := st.StatusLine.Render(fmt.Sprintf(
-		"⎈  NAMESPACE: %s     ⬡  CLUSTER: %s     ◉  USER: %s",
-		namespace, cluster, user,
-	))
+	left := st.StatusLine.Render("⎈  NAMESPACE: ") + st.StatusValue.Render(namespace) +
+		st.StatusLine.Render("     ⬡  CLUSTER: ") + st.StatusValue.Render(cluster) +
+		st.StatusLine.Render("     ◉  USER: ") + st.StatusValue.Render(user)
 	right := st.Dim.Render(fmt.Sprintf("Refreshed: %s   TZ: %s",
 		now.Format("01/02/2006 3:04:05 PM"), tz,
 	))
 
-	gap := max(1, lay.totalWidth()-lipgloss.Width(left)-lipgloss.Width(right))
+	// Use whichever is wider: the table's natural column sum or the live terminal
+	// width. This makes the right section float to the actual terminal edge when
+	// the window is wider than the table, and fall back gracefully when narrower.
+	effectiveWidth := max(lay.totalWidth(), termWidth)
+	gap := max(1, effectiveWidth-lipgloss.Width(left)-lipgloss.Width(right))
 	return left + strings.Repeat(" ", gap) + right
 }
 
@@ -711,8 +718,9 @@ func dimStyles(st Styles) Styles {
 		Container: d(st.Container),
 		PlainCell:  d(st.PlainCell),
 		Divider:    d(st.Divider),
-		StatusLine: d(st.StatusLine),
-		Dim:        d(st.Dim),
+		StatusLine:  d(st.StatusLine),
+		StatusValue: d(st.StatusValue),
+		Dim:         d(st.Dim),
 	}
 }
 

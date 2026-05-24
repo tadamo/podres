@@ -17,8 +17,9 @@ type Styles struct {
 	Divider     lipgloss.Style
 
 	// Status line (namespace header + refresh timestamp)
-	StatusLine lipgloss.Style
-	Dim        lipgloss.Style // dimmed/faint text
+	StatusLine  lipgloss.Style // bold label text
+	StatusValue lipgloss.Style // non-bold value text
+	Dim         lipgloss.Style // dimmed/faint text
 }
 
 // DefaultStyles returns the standard color theme.
@@ -30,7 +31,7 @@ func DefaultStyles(noColor bool) Styles {
 			Header: lipgloss.NewStyle(), PodName: lipgloss.NewStyle(),
 			Container: lipgloss.NewStyle(), PlainCell: lipgloss.NewStyle(),
 			Divider: lipgloss.NewStyle(),
-			StatusLine: lipgloss.NewStyle(),
+			StatusLine: lipgloss.NewStyle(), StatusValue: lipgloss.NewStyle(),
 			Dim:        lipgloss.NewStyle(),
 		}
 	}
@@ -46,7 +47,8 @@ func DefaultStyles(noColor bool) Styles {
 		PlainCell:  lipgloss.NewStyle(),
 		Divider:    lipgloss.NewStyle().Foreground(lipgloss.Color("8")), // dark gray
 
-		StatusLine: lipgloss.NewStyle().Bold(true),
+		StatusLine:  lipgloss.NewStyle().Bold(true),
+		StatusValue: lipgloss.NewStyle(),
 		Dim:        lipgloss.NewStyle().Faint(true),
 	}
 }
