@@ -357,10 +357,13 @@ func renderStatusLine(namespace, cluster, user string, st Styles, lay layout, te
 		now.Format("01/02/2006 3:04:05 PM"), tz,
 	))
 
-	// Use whichever is wider: the table's natural column sum or the live terminal
-	// width. This makes the right section float to the actual terminal edge when
-	// the window is wider than the table, and fall back gracefully when narrower.
-	effectiveWidth := max(lay.totalWidth(), termWidth)
+	// Use the live terminal width so the right section always floats to the
+	// actual terminal edge as the window is resized — matching podwatch behaviour.
+	// Fall back to the table's natural column sum when the terminal width is unknown.
+	effectiveWidth := lay.totalWidth()
+	if termWidth > 0 {
+		effectiveWidth = termWidth
+	}
 	gap := max(1, effectiveWidth-lipgloss.Width(left)-lipgloss.Width(right))
 	return left + strings.Repeat(" ", gap) + right
 }
