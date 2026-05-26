@@ -104,11 +104,12 @@ func (l layout) totalWidth() int {
 	return w
 }
 
-// RenderFixedHeader returns the pinned top portion: status line, ResourceQuota
-// section (or a placeholder message), sort hint, column headers, and divider.
-// Its line count is variable — use strings.Count(result, "\n") to measure it.
+// RenderFixedHeaderBase returns the pinned top portion: status line, ResourceQuota
+// section (or a placeholder message), sort hint, and column headers — WITHOUT the
+// trailing thick divider. Watch mode renders that divider dynamically (with optional
+// scroll indicators); no-watch mode adds it via RenderFixedHeader.
 // termWidth is the current terminal width; pass 0 when unknown (falls back to table width).
-func RenderFixedHeader(
+func RenderFixedHeaderBase(
 	namespace, cluster, user, selector string,
 	pods []kube.PodSpec,
 	metrics map[string]kube.PodMetrics,
@@ -145,8 +146,28 @@ func RenderFixedHeader(
 	sb.WriteString("\n")
 	sb.WriteString(renderHeaderRow(st, lay, sortKey, sortDesc))
 	sb.WriteString("\n")
-	sb.WriteString(renderThickDivider(st, lay))
+	// Thick divider intentionally omitted — caller adds it (plain or with scroll indicator).
 	return sb.String()
+}
+
+// RenderFixedHeader returns RenderFixedHeaderBase plus the trailing thick divider.
+// Used by no-watch mode (Render); watch mode uses RenderFixedHeaderBase directly.
+func RenderFixedHeader(
+	namespace, cluster, user, selector string,
+	pods []kube.PodSpec,
+	metrics map[string]kube.PodMetrics,
+	quota *kube.NamespaceQuota,
+	thresh threshold.Config,
+	st Styles,
+	wide bool,
+	allNamespaces bool,
+	sortKey SortKey,
+	sortDesc bool,
+	termWidth int,
+) string {
+	lay := newLayout(pods, wide, allNamespaces)
+	return RenderFixedHeaderBase(namespace, cluster, user, selector, pods, metrics, quota, thresh, st, wide, allNamespaces, sortKey, sortDesc, termWidth) +
+		renderThickDivider(st, lay)
 }
 
 // RenderBody returns the scrollable pod rows only (no divider or TOTAL line).
@@ -457,6 +478,48 @@ func computeTotals(pods []kube.PodSpec, metrics map[string]kube.PodMetrics) tabl
 
 func renderThickDivider(st Styles, lay layout) string {
 	return st.Divider.Render(strings.Repeat("─", lay.totalWidth())) + "\n"
+}
+
+// renderScrollDivider builds a thick divider of the given width with a right-aligned
+// hint (e.g. "▼ more" or "▲ above") rendered in the dim style. The hint is separated
+// from the dashes by a single space that is included in the hint string.
+func renderScrollDivider(st Styles, width int, hint string) string {
+	hintStyled := st.Dim.Render(" " + hint)
+	hintW := lipgloss.Width(hintStyled)
+	dashW := max(0, width-hintW)
+	return st.Divider.Render(strings.Repeat("─", dashW)) + hintStyled + "\n"
+}
+
+// dividerWidth returns the effective width for thick dividers: capped at the
+// table's natural width so dividers stay aligned with the pod listing.
+func (m Model) dividerWidth() int {
+	if m.termWidth > 0 {
+		return min(m.termWidth, m.tableWidth)
+	}
+	return m.tableWidth
+}
+
+// renderTopDivider returns the thick divider that sits between the column headers
+// and the scrollable viewport. When the user has scrolled down (pod rows hidden
+// above), it embeds a "▲ above" hint so the user knows there is content above.
+func (m Model) renderTopDivider() string {
+	w := m.dividerWidth()
+	if m.viewport.YOffset > 0 {
+		return renderScrollDivider(m.styles, w, "▲ more")
+	}
+	return m.styles.Divider.Render(strings.Repeat("─", w)) + "\n"
+}
+
+// renderBotDivider returns the thick divider that sits between the scrollable
+// viewport and the pinned TOTAL row. When there are pod rows hidden below the
+// visible area it embeds a "▼ more" hint so the user knows scrolling is possible.
+func (m Model) renderBotDivider() string {
+	w := m.dividerWidth()
+	linesBelow := m.viewport.TotalLineCount() - m.viewport.VisibleLineCount() - m.viewport.YOffset
+	if linesBelow > 0 {
+		return renderScrollDivider(m.styles, w, "▼ more")
+	}
+	return m.styles.Divider.Render(strings.Repeat("─", w)) + "\n"
 }
 
 func renderTotalsRow(t tableTotals, st Styles, lay layout) string {

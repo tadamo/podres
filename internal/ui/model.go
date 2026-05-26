@@ -37,12 +37,13 @@ type Model struct {
 	err     error
 
 	// viewport for the scrollable table body (watch mode only)
-	viewport      viewport.Model
-	ready         bool
-	termWidth     int
-	termHeight    int
-	headerContent string
-	footerContent string
+	viewport     viewport.Model
+	ready        bool
+	termWidth    int
+	termHeight   int
+	tableWidth   int    // lay.totalWidth() at last rebuild — used for dynamic divider rendering
+	headerBase   string // fixed header WITHOUT the trailing thick divider (watch mode only)
+	footerSuffix string // totals row + padding blank lines + keyboard hint (watch mode only)
 
 	// namespace picker state
 	pickerMode    bool
@@ -254,7 +255,9 @@ func (m Model) View() string {
 	if !m.ready {
 		return "Loading…\n"
 	}
-	return m.headerContent + m.viewport.View() + m.footerContent
+	// The explicit "\n" terminates the viewport's last rendered line.
+	// renderTopDivider / renderBotDivider embed live scroll indicators when needed.
+	return m.headerBase + m.renderTopDivider() + m.viewport.View() + "\n" + m.renderBotDivider() + m.footerSuffix
 }
 
 // cycleSort toggles direction if key matches current sort, or sets a new sort key (descending).
@@ -378,11 +381,24 @@ func buildDisplayList(filtered []string, query string) []string {
 // rebuildViewport recomputes header/footer content and sizes the viewport to the
 // actual pod rows, with the TOTAL area pinned just below and the footer floated
 // to the bottom of the terminal via variable padding.
+//
+// View() assembles the final output as:
+//
+//	headerBase + renderTopDivider() + viewport.View() + "\n" + renderBotDivider() + footerSuffix
+//
+// The two thick dividers are rendered dynamically so they can carry live scroll
+// indicators (▲ above / ▼ more) without rebuilding the entire layout on each scroll.
 func (m Model) rebuildViewport() Model {
 	sorted := sortPods(m.pods, m.metrics, m.sortKey, m.sortDesc)
-	m.headerContent = RenderFixedHeader(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc, m.termWidth)
 
-	totalArea := RenderTotalArea(sorted, m.metrics, m.styles, m.wide, m.allNamespaces)
+	lay := newLayout(sorted, m.wide, m.allNamespaces)
+	m.tableWidth = lay.totalWidth()
+
+	m.headerBase = RenderFixedHeaderBase(m.displayNamespace(), m.cluster, m.user, m.selector, sorted, m.metrics, m.quota, m.thresh, m.styles, m.wide, m.allNamespaces, m.sortKey, m.sortDesc, m.termWidth)
+
+	totals := computeTotals(sorted, m.metrics)
+	totalsRow := renderTotalsRow(totals, m.styles, lay)
+
 	var footerBody string
 	if m.pickerMode {
 		filtered := filteredNamespaces(m.namespaces, m.pickerQuery)
@@ -393,14 +409,15 @@ func (m Model) rebuildViewport() Model {
 	}
 	podBody := RenderBody(sorted, m.metrics, m.thresh, m.styles, m.podDividers, m.wide, m.allNamespaces)
 
-	headerLines := strings.Count(m.headerContent, "\n")
-	totalAreaLines := strings.Count(totalArea, "\n")
+	// headerLines: headerBase line count + 1 for the top thick divider rendered by View().
+	headerLines := strings.Count(m.headerBase, "\n") + 1
+	// totalAreaLines: 1 for the bottom thick divider (rendered by View()) + 1 for the TOTAL row.
+	const totalAreaLines = 2
 	footerBodyLines := strings.Count(footerBody, "\n")
 	podBodyLines := strings.Count(podBody, "\n")
 
-	// The leading "\n" terminates the viewport's last rendered line (viewport.View()
-	// does not produce a trailing newline), so the thick divider starts on its own line.
-	// The -1 in maxVP/padding accounts for that extra newline in footerContent.
+	// The explicit "\n" in View() terminates the viewport's last rendered line.
+	// The -1 in maxVP/padding accounts for that extra newline (same convention as before).
 	maxVP := max(1, m.termHeight-headerLines-1-totalAreaLines-footerBodyLines)
 	vpHeight := max(1, min(podBodyLines, maxVP))
 	padding := max(0, m.termHeight-headerLines-1-totalAreaLines-vpHeight-footerBodyLines)
@@ -409,7 +426,9 @@ func (m Model) rebuildViewport() Model {
 	m.viewport.Height = vpHeight
 	m.viewport.SetContent(podBody)
 
-	m.footerContent = "\n" + totalArea + strings.Repeat("\n", padding) + footerBody
+	// footerSuffix holds everything after the bottom thick divider: the TOTAL row,
+	// blank padding lines, and the keyboard hint.
+	m.footerSuffix = totalsRow + "\n" + strings.Repeat("\n", padding) + footerBody
 	return m
 }
 
