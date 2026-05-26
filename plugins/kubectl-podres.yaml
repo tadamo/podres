@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   name: podres
 spec:
-  version: "v1.0.5"
+  version: "v1.0.6"
   homepage: https://github.com/tadamo/podres
   shortDescription: "Watch pod resource requests, limits, and live utilization"
   description: |
@@ -18,38 +18,38 @@ spec:
         matchLabels:
           os: linux
           arch: amd64
-      uri: https://github.com/tadamo/podres/releases/download/v1.0.5/kubectl-podres_linux_amd64.tar.gz
-      sha256: "2dae4b648a50d15f5c4f2a620a47d45e6836ff4c9da8d91ec246c8e534805d82"
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.6/kubectl-podres_linux_amd64.tar.gz
+      sha256: "d052772f37de850595040196eb6b140eb4c1d9c909857d2b79ccf0625b550703"
       bin: kubectl-podres
 
     - selector:
         matchLabels:
           os: linux
           arch: arm64
-      uri: https://github.com/tadamo/podres/releases/download/v1.0.5/kubectl-podres_linux_arm64.tar.gz
-      sha256: "efdb1921d13347316fb2c4a840a130daf62295298de8cfb9394f2481e466299c"
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.6/kubectl-podres_linux_arm64.tar.gz
+      sha256: "1bc5d5332449eeed8dde41ab4413c52e0f0275eb5ac1651e2cafa23db5d165cc"
       bin: kubectl-podres
 
     - selector:
         matchLabels:
           os: darwin
           arch: amd64
-      uri: https://github.com/tadamo/podres/releases/download/v1.0.5/kubectl-podres_darwin_amd64.tar.gz
-      sha256: "cd98eac6747efbdac517f7afef603e62ba7385e602a25051c4cc122f818357db"
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.6/kubectl-podres_darwin_amd64.tar.gz
+      sha256: "a964762a6ebaf039447f7faf07704b397b0cd7db7d0bbc7a5f099efd6e21bd07"
       bin: kubectl-podres
 
     - selector:
         matchLabels:
           os: darwin
           arch: arm64
-      uri: https://github.com/tadamo/podres/releases/download/v1.0.5/kubectl-podres_darwin_arm64.tar.gz
-      sha256: "61df7bbff026c5767d12bcb0fe7a0c6db800f7a6008542a0ec086ec5f30670b8"
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.6/kubectl-podres_darwin_arm64.tar.gz
+      sha256: "97bd44ace6562845d70e79b34a9bafdaccc4dad46559979ddb43c3d43514108c"
       bin: kubectl-podres
 
     - selector:
         matchLabels:
           os: windows
           arch: amd64
-      uri: https://github.com/tadamo/podres/releases/download/v1.0.5/kubectl-podres_windows_amd64.zip
-      sha256: "4051800bca8facb4543a274b42418490efd7eeaebbd428416ef40d1a67aa3cf5"
+      uri: https://github.com/tadamo/podres/releases/download/v1.0.6/kubectl-podres_windows_amd64.zip
+      sha256: "9d8f764b4a62085c7136e98a677c162e4a3d7938f44c66e4c1a269b0663adca7"
       bin: kubectl-podres.exe
