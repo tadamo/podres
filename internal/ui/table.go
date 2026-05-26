@@ -357,12 +357,13 @@ func renderStatusLine(namespace, cluster, user string, st Styles, lay layout, te
 		now.Format("01/02/2006 3:04:05 PM"), tz,
 	))
 
-	// Use the live terminal width so the right section always floats to the
-	// actual terminal edge as the window is resized — matching podwatch behaviour.
+	// Cap the right-align target at the table's natural width so the timestamp
+	// never floats past the pod listing's right edge — matching the footer's
+	// sort-hint behaviour (min(termWidth, lay.totalWidth())).
 	// Fall back to the table's natural column sum when the terminal width is unknown.
 	effectiveWidth := lay.totalWidth()
 	if termWidth > 0 {
-		effectiveWidth = termWidth
+		effectiveWidth = min(termWidth, lay.totalWidth())
 	}
 	gap := max(1, effectiveWidth-lipgloss.Width(left)-lipgloss.Width(right))
 	return left + strings.Repeat(" ", gap) + right
