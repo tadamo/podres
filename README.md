@@ -2,29 +2,7 @@
 
 A `kubectl` (or `oc`) plugin that shows a real-time, colorized view of Kubernetes pod and container resource requests, limits, and live utilization in a single compact table. Works with any Kubernetes or OpenShift cluster.
 
-```text
- NAMESPACE: my-namespace   CLUSTER: prod-eks-cluster   USER: jane   Refreshed: 05/20/2026 2:19:10 PM   TZ: America/New_York
-
- ResourceQuota
-  CPU-REQ      CPU-LIM      MEM-REQ       MEM-LIM
-  4.4 / 10     9.4 / 20     5.3Gi / 12Gi  9.8Gi / 24Gi
-
- POD                                  PHASE    CONTAINER       STATE    READY  RESTARTS  CPU-REQ  CPU-LIM  CPU-USE  CPU%  MEM-REQ  MEM-LIM  MEM-USE   MEM%
- api-server-7d4f9c8b6-xk2pn           Running
-                                               api-server      Running  1/1    0         250m     500m     142m     28%   256Mi    512Mi    198Mi     38%
-                                               sidecar-proxy   Running  1/1    0         100m     200m     23m      11%   128Mi    256Mi    67Mi      26%
- worker-deployment-5c8f9d6b7-mq7rw    Running
-                                               worker          Running  1/1    0         500m     1000m    823m     82%   512Mi    1Gi      756Mi     73%
-                                               sidecar-proxy   Running  1/1    0         100m     200m     31m      15%   128Mi    256Mi    71Mi      27%
- cache-proxy-6d9e7f8c4-jn4vt          Running
-                                               cache-proxy     Running  1/1    3 OOM     100m     200m     196m     98%‼  64Mi     128Mi    122Mi     95%‼
-                                               sidecar-proxy   Running  1/1    0         100m     200m     18m      9%    128Mi    256Mi    54Mi      21%
- job-processor-79c4b6f8d-hp8xs        Running
-                                               job-processor   Running  1/1    0         1000m    2000m    762m     38%   1Gi      2Gi      892Mi     43%
-                                               sidecar-proxy   Running  1/1    0         100m     200m     28m      14%   128Mi    256Mi    74Mi      28%
-
- TOTAL                                                                            2250m    4500m    2023m         2176Mi   4352Mi   2234Mi
-```
+![podres screenshot](docs/screenshot.png)
 
 ## Prerequisites
 
