@@ -38,6 +38,17 @@ fi
 KUBECONTEXT="kind-${CLUSTER_NAME}"
 KUBECTL="kubectl --context=$KUBECONTEXT"
 
+# ── metrics-server ───────────────────────────────────────────────────────────
+# kind kubelets don't present CA-signed certs, so metrics-server needs
+# --kubelet-insecure-tls to scrape them.
+
+info "Installing metrics-server …"
+$KUBECTL apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+$KUBECTL patch -n kube-system deployment metrics-server --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+$KUBECTL rollout status deployment/metrics-server -n kube-system --timeout=120s
+ok "metrics-server ready"
+
 # ── namespace + ResourceQuota ─────────────────────────────────────────────────
 
 info "Applying namespace '$NAMESPACE' and ResourceQuota …"

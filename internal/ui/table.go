@@ -143,6 +143,10 @@ func RenderFixedHeaderBase(
 		sb.WriteString(st.Divider.Render("◌  No ResourceQuota set for this namespace"))
 		sb.WriteString("\n")
 	}
+	if metrics == nil {
+		sb.WriteString(st.Divider.Render("◌  metrics-server unavailable — CPU-USE, MEM-USE and % columns show N/A"))
+		sb.WriteString("\n")
+	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHeaderRow(st, lay, sortKey, sortDesc))
 	sb.WriteString("\n")
