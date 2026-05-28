@@ -413,22 +413,33 @@ func (m Model) rebuildViewport() Model {
 	headerLines := strings.Count(m.headerBase, "\n") + 1
 	// totalAreaLines: 1 for the bottom thick divider (rendered by View()) + 1 for the TOTAL row.
 	const totalAreaLines = 2
+	// blankSeparatorLines: the blank row always shown between the TOTAL row and the footer.
+	const blankSeparatorLines = 1
 	footerBodyLines := strings.Count(footerBody, "\n")
+	// Count lines before trimming so the height calculation is correct.
 	podBodyLines := strings.Count(podBody, "\n")
+	// Trim the trailing newline so the viewport doesn't see a phantom empty line
+	// (which would cause "▼ more" to appear even when all pods are visible).
+	podBodyContent := strings.TrimSuffix(podBody, "\n")
 
 	// The explicit "\n" in View() terminates the viewport's last rendered line.
-	// The -1 in maxVP/padding accounts for that extra newline (same convention as before).
-	maxVP := max(1, m.termHeight-headerLines-1-totalAreaLines-footerBodyLines)
+	// maxVP is the largest the viewport can be while keeping everything on screen.
+	// vpHeight is capped at the actual pod row count so the TOTAL row always sits
+	// immediately beneath the last pod row (viewport expands only when scrolling is needed).
+	maxVP := max(1, m.termHeight-headerLines-1-totalAreaLines-blankSeparatorLines-footerBodyLines)
 	vpHeight := max(1, min(podBodyLines, maxVP))
-	padding := max(0, m.termHeight-headerLines-1-totalAreaLines-vpHeight-footerBodyLines)
 
 	m.viewport.Width = m.termWidth
 	m.viewport.Height = vpHeight
-	m.viewport.SetContent(podBody)
+	m.viewport.SetContent(podBodyContent)
+	// If all pods now fit in the viewport (no scrolling needed), reset to the top
+	// so rows that were previously hidden above become visible after a window resize.
+	if vpHeight >= podBodyLines {
+		m.viewport.GotoTop()
+	}
 
-	// footerSuffix holds everything after the bottom thick divider: the TOTAL row,
-	// blank padding lines, and the keyboard hint.
-	m.footerSuffix = totalsRow + "\n" + strings.Repeat("\n", padding) + footerBody
+	// footerSuffix: TOTAL row, one blank separator line, then the keyboard hint / picker.
+	m.footerSuffix = totalsRow + "\n" + "\n" + footerBody
 	return m
 }
 
